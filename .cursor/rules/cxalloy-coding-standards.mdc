@@ -1,0 +1,7 @@
+---
+description: 
+globs: *.php,*.js,*.less
+alwaysApply: false
+---
+[consise_cxalloy_coding_standards.md](mdc:docs/consise_cxalloy_coding_standards.md)
+
