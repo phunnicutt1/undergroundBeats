@@ -1,4 +1,4 @@
-# Underground Beats App
+# undergroundBeats™ Pro Audio Beat Creation Tool
 
 ### The future of beat creation
 
