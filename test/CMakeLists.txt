@@ -18,7 +18,9 @@ set(TEST_SOURCES
     audio/AudioSourceSeparatorTest.cpp
     audio/AudioComponentProcessorTest.cpp
     ml/VariationGeneratorTest.cpp
+    ml/ONNXSourceSeparatorTest.cpp # Added this test
     core/UndergroundBeatsControllerTest.cpp
+    core/UndergroundBeatsProcessorTest.cpp # Added this test
 )
 
 # Create test executable

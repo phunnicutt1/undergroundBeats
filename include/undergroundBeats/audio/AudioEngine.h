@@ -102,10 +102,10 @@ public:
                               float** outputChannelData,
                               int numOutputChannels,
                               int numSamples);
-    
-    void audioDeviceAboutToStart(juce::AudioIODevice* device);
-    void audioDeviceStopped();
-    
+   
+   void audioDeviceAboutToStart(juce::AudioIODevice* device) override; // Added override
+   void audioDeviceStopped() override; // Added override
+   
 private:
     juce::AudioDeviceManager deviceManager;
     std::unique_ptr<juce::AudioProcessorGraph> processorGraph;

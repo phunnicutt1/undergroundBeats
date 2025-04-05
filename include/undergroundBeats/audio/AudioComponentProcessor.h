@@ -44,11 +44,16 @@ public:
     void setAudioData(const juce::AudioBuffer<float>& audioData);
     
     /**
-     * @brief Process the audio data with current settings
-     * @param outputBuffer The buffer to write processed audio to
-     * @param numSamples The number of samples to process
+     * @brief Process a segment of the audio data with current settings and add it to an output buffer.
+     * @param outputBuffer The buffer to write processed audio into.
+     * @param outputStartSample The starting sample index in the output buffer.
+     * @param componentStartSample The starting sample index within this component's internal audioData.
+     * @param numSamplesToProcess The number of samples to process from the component.
      */
-    void processAudio(juce::AudioBuffer<float>& outputBuffer, int numSamples);
+    void processAudio(juce::AudioBuffer<float>& outputBuffer, 
+                      int outputStartSample, 
+                      int64_t componentStartSample, 
+                      int numSamplesToProcess);
     
     /**
      * @brief Set the gain for this component
@@ -111,6 +116,18 @@ public:
      */
     std::string getName() const;
     
+    /**
+     * @brief Prepare the processor for playback with a given sample rate and block size.
+     * @param sampleRate The sample rate.
+     * @param maximumExpectedSamplesPerBlock The maximum block size.
+     */
+    void prepare(double sampleRate, int maximumExpectedSamplesPerBlock);
+    
+    /**
+     * @brief Reset the internal state of the processor (e.g., effects).
+     */
+    void reset();
+
 private:
     // Component properties
     std::string name;
@@ -131,9 +148,12 @@ private:
     std::unordered_map<std::string, Effect> effects;
     
     // Internal processing
-    void applyEffects(juce::AudioBuffer<float>& buffer);
-    void applyPitchShift(juce::AudioBuffer<float>& buffer);
-    void applyTempoAdjustment(juce::AudioBuffer<float>& buffer);
+    // void applyEffects(juce::AudioBuffer<float>& buffer); // Defer segmented effects
+    // void applyPitchShift(juce::AudioBuffer<float>& buffer); // Defer segmented pitch/tempo
+    // void applyTempoAdjustment(juce::AudioBuffer<float>& buffer); // Defer segmented pitch/tempo
+    
+    double currentSampleRate = 44100.0;
+    int currentBlockSize = 512;
 };
 
 /**

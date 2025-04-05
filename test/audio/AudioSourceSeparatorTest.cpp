@@ -15,16 +15,16 @@ TEST_CASE("AudioSourceSeparator initialization", "[audio][separator]") {
         REQUIRE(std::find(componentNames.begin(), componentNames.end(), "drums") != componentNames.end());
     }
     
-    SECTION("Initialize with default model") {
+    SECTION("Initialize with dummy model") {
         // Without a real model, it should still initialize in test mode
-        bool initialized = separator.initialize("default");
+        bool initialized = separator.initialize(undergroundBeats::audio::SeparationModel::DUMMY);
         REQUIRE(initialized);
     }
 }
 
 TEST_CASE("AudioSourceSeparator audio processing", "[audio][separator]") {
     undergroundBeats::audio::AudioSourceSeparator separator;
-    separator.initialize("default");
+    separator.initialize(undergroundBeats::audio::SeparationModel::DUMMY);
     
     SECTION("Separate audio buffer") {
         // Create a test audio buffer

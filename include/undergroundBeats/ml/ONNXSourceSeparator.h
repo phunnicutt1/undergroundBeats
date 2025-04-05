@@ -1,91 +1,143 @@
 #pragma once
 
 #include "undergroundBeats/ml/AudioSourceSeparator.h"
-#include <juce_audio_basics/juce_audio_basics.h>
-#include <memory>
+#include "undergroundBeats/ml/ONNXModelLoader.h"
+#include <onnxruntime_cxx_api.h>
 #include <string>
 #include <vector>
-
-// Forward declarations for ONNX Runtime
-namespace Ort {
-    class Session;
-    class Env;
-    class MemoryInfo;
-}
+#include <memory>
+#include <map>
 
 namespace undergroundBeats {
 namespace ml {
 
 /**
  * @class ONNXSourceSeparator
- * @brief Audio source separator using ONNX Runtime for inference.
- * 
- * This class implements audio source separation using pre-trained models
- * in ONNX format through the ONNX Runtime.
+ * @brief Implements audio source separation using an ONNX model.
  */
-class ONNXSourceSeparator : public AudioSourceSeparator
-{
+class ONNXSourceSeparator : public AudioSourceSeparator {
 public:
     /**
-     * @brief Constructor for the ONNXSourceSeparator class.
-     * @param modelPath Path to the ONNX model file.
+     * @brief Default constructor for creating an empty separator instance.
      */
-    ONNXSourceSeparator(const std::string& modelPath);
+    ONNXSourceSeparator();
+
+    /**
+     * @brief Constructor. Loads the ONNX model using the provided loader.
+     * @param modelPath Path to the .onnx source separation model file.
+     * @param modelLoader A reference to the ONNXModelLoader instance.
+     */
+    ONNXSourceSeparator(const std::string& modelPath, ONNXModelLoader& modelLoader);
+
+    /**
+     * @brief Destructor.
+     */
+    ~ONNXSourceSeparator() override = default;
+
+    /**
+     * @brief Processes an input audio buffer using the loaded ONNX model.
+     * @param inputBuffer The input audio buffer containing the mixed signal.
+     * @return A map of source names to separated audio buffers.
+     */
+    std::map<std::string, juce::AudioBuffer<float>> process(const juce::AudioBuffer<float>& inputBuffer) override;
+
+    /**
+     * @brief Gets the names of the sources produced by the loaded model.
+     *        (Placeholder - needs implementation based on model metadata or configuration).
+     * @return A vector of source names.
+     */
+    std::vector<std::string> getSourceNames() const override;
+
+    /**
+     * @brief Checks if the model was loaded successfully and is ready for inference.
+     * @return True if the ONNX session is valid, false otherwise.
+     */
+    bool isReady() const override;
     
     /**
-     * @brief Destructor for the ONNXSourceSeparator class.
+     * @brief Checks if the separator is initialized and has stems loaded.
+     * @return True if initialized with separated stems, false otherwise.
      */
-    ~ONNXSourceSeparator() override;
+    bool isInitialized() const;
     
     /**
-     * @brief Initialize the source separator.
-     * @return True if initialization was successful, false otherwise.
+     * @brief Load and separate an audio file into stems.
+     * @param audioFile The audio file to load and separate.
+     * @return True if loading and separation succeeded, false otherwise.
      */
-    bool initialize() override;
+    bool loadAndSeparate(const juce::File& audioFile);
     
     /**
-     * @brief Check if the separator is initialized and ready to use.
-     * @return True if the separator is initialized, false otherwise.
+     * @brief Gets the number of available stems after separation.
+     * @return The number of separated stems (0 if not separated yet).
      */
-    bool isInitialized() const override;
+    int getNumberOfStems() const;
     
     /**
-     * @brief Separate audio into its component parts.
-     * @param inputAudio The mixed audio to separate.
-     * @param sampleRate The sample rate of the input audio.
-     * @return A SeparatedAudio structure containing the separated components.
+     * @brief Gets a specific stem's audio buffer by index.
+     * @param stemIndex The index of the stem to retrieve.
+     * @return The audio buffer for the specified stem.
      */
-    SeparatedAudio separateAudio(const juce::AudioBuffer<float>& inputAudio, double sampleRate) override;
+    juce::AudioBuffer<float> getStemBuffer(int stemIndex) const;
     
     /**
-     * @brief Get the name of the model.
-     * @return The name of the source separation model.
+     * @brief Gets the sample rate of a specific stem.
+     * @param stemIndex The index of the stem.
+     * @return The sample rate of the stem in Hz.
      */
-    std::string getModelName() const override;
+    double getStemSampleRate(int stemIndex) const;
     
+    /**
+     * @brief Replaces a stem buffer with new audio content.
+     * @param stemIndex The index of the stem to replace.
+     * @param newBuffer The new audio buffer to use.
+     * @return True if the replacement succeeded, false otherwise.
+     */
+    bool replaceStemBuffer(int stemIndex, const juce::AudioBuffer<float>& newBuffer);
+
 private:
-    std::string modelPath;
-    std::string modelName;
-    bool initialized;
-    
-    // ONNX Runtime objects
-    std::unique_ptr<Ort::Env> ortEnvironment;
-    std::unique_ptr<Ort::Session> ortSession;
-    std::unique_ptr<Ort::MemoryInfo> ortMemoryInfo;
-    
-    // Model parameters
-    int inputSampleRate;
-    int modelSampleRate;
-    int chunkSize;
-    std::vector<const char*> inputNames;
-    std::vector<const char*> outputNames;
-    
-    // Private methods
-    void loadModel();
-    void preprocessAudio(const juce::AudioBuffer<float>& inputAudio, std::vector<float>& processedData);
-    juce::AudioBuffer<float> postprocessAudio(const std::vector<float>& outputData, int numChannels, int numSamples);
-    
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ONNXSourceSeparator)
+    /**
+     * @brief Preprocesses the input JUCE audio buffer into the format expected by the ONNX model.
+     * @param inputBuffer The input audio buffer.
+     * @return A vector of Ort::Value containing the preprocessed input tensors.
+     */
+    std::vector<Ort::Value> preprocess(const juce::AudioBuffer<float>& inputBuffer);
+
+    /**
+     * @brief Runs inference on the preprocessed input tensors using the ONNX session.
+     * @param inputTensors The preprocessed input tensors.
+     * @return A vector of Ort::Value containing the output tensors from the model.
+     */
+    std::vector<Ort::Value> runInference(std::vector<Ort::Value>& inputTensors);
+
+    /**
+     * @brief Postprocesses the output tensors from the model into JUCE audio buffers for each source.
+     * @param outputTensors The output tensors from the model.
+     * @return A map of source names to separated audio buffers.
+     */
+    std::map<std::string, juce::AudioBuffer<float>> postprocess(std::vector<Ort::Value>& outputTensors);
+
+    // Member variables
+    ONNXModelLoader& loader; // Reference to the model loader
+    std::unique_ptr<Ort::Session> session; // ONNX inference session
+    Ort::AllocatorWithDefaultOptions allocator; // Default allocator
+
+    std::vector<std::string> inputNames;  // Names of the model's input nodes
+    std::vector<std::string> outputNames; // Names of the model's output nodes
+    std::vector<const char*> inputNamesCharPtr; // C-style char* for Ort::Session::Run
+    std::vector<const char*> outputNamesCharPtr; // C-style char* for Ort::Session::Run
+
+    std::vector<int64_t> inputDims; // Expected dimensions for input tensor (placeholder)
+    std::vector<int64_t> outputDims; // Expected dimensions for output tensor(s) (placeholder)
+
+    std::vector<std::string> sourceNames; // Names of the output sources (e.g., "drums", "bass") - needs initialization
+
+    bool ready = false; // Flag indicating if the model loaded successfully
+
+    // Storage for separated stems
+    std::vector<juce::AudioBuffer<float>> stemBuffers;
+    std::vector<std::string> stemNames;
+    double stemSampleRate = 44100.0; // Default sample rate for stems
 };
 
 } // namespace ml

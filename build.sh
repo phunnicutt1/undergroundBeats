@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Build script for undergroundBeats
+# Build script for UndergroundBeats
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BUILD_DIR="$SCRIPT_DIR/build"

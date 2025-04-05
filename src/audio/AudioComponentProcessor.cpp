@@ -18,50 +18,59 @@ void AudioComponentProcessor::setAudioData(const juce::AudioBuffer<float>& audio
     this->audioData = audioData;
 }
 
-void AudioComponentProcessor::processAudio(juce::AudioBuffer<float>& outputBuffer, int numSamples) {
-    if (!enabled || audioData.getNumSamples() == 0) {
-        return;
+void AudioComponentProcessor::processAudio(juce::AudioBuffer<float>& outputBuffer, 
+                                          int outputStartSample, 
+                                          int64_t componentStartSample, 
+                                          int numSamplesToProcess) {
+                                              
+    if (!enabled || audioData.getNumSamples() == 0 || numSamplesToProcess <= 0) {
+        return; // Nothing to do
+    }
+
+    const int numOutputChannels = outputBuffer.getNumChannels();
+    const int numComponentChannels = audioData.getNumChannels();
+    const int64_t componentLength = audioData.getNumSamples();
+
+    // Ensure componentStartSample is within bounds
+    if (componentStartSample < 0 || componentStartSample >= componentLength) {
+        return; // Start sample is out of bounds
+    }
+
+    // Calculate how many samples can actually be read from the component buffer
+    const int availableComponentSamples = static_cast<int>(std::min((int64_t)numSamplesToProcess, 
+                                                                     componentLength - componentStartSample));
+                                                                     
+    if (availableComponentSamples <= 0) {
+        return; // No samples available to process from the component source
+    }
+
+    // Ensure output buffer has space
+    if (outputStartSample + availableComponentSamples > outputBuffer.getNumSamples()) {
+         // This shouldn't happen if called correctly from the controller, but good to check
+        juce::Logger::writeToLog("AudioComponentProcessor::processAudio - Output buffer too small!");
+        // Optionally, truncate availableComponentSamples here
+        return; 
     }
     
-    // Create a temporary buffer for processing
-    juce::AudioBuffer<float> tempBuffer(
-        audioData.getNumChannels(),
-        numSamples);
-    
-    // Copy from audio data, handling bounds correctly
-    const int samplesToProcess = std::min(numSamples, audioData.getNumSamples());
-    
-    for (int channel = 0; channel < tempBuffer.getNumChannels(); ++channel) {
-        tempBuffer.copyFrom(
-            channel, 0,
-            audioData, 
-            channel, 0,
-            samplesToProcess);
-    }
-    
-    // Apply pitch shift if needed
-    if (std::abs(pitchShift) > 0.01f) {
-        applyPitchShift(tempBuffer);
-    }
-    
-    // Apply tempo adjustment if needed
-    if (std::abs(tempoRatio - 1.0f) > 0.01f) {
-        applyTempoAdjustment(tempBuffer);
-    }
-    
-    // Apply effects
-    applyEffects(tempBuffer);
-    
-    // Apply gain
-    tempBuffer.applyGain(juce::Decibels::decibelsToGain(gain));
-    
-    // Add to output buffer
-    for (int channel = 0; channel < std::min(tempBuffer.getNumChannels(), outputBuffer.getNumChannels()); ++channel) {
+    // TODO: Apply effects, pitch shift, tempo adjustment here on the segment.
+    // This is complex and deferred. For now, we only apply gain.
+
+    // Calculate linear gain
+    const float linearGain = juce::Decibels::decibelsToGain(gain);
+
+    // Add the specified segment from audioData to the outputBuffer, applying gain
+    for (int channel = 0; channel < numOutputChannels; ++channel) {
+        const int componentChannel = channel % numComponentChannels; // Handle channel mismatch
+
         outputBuffer.addFrom(
-            channel, 0,
-            tempBuffer,
-            channel, 0,
-            samplesToProcess);
+            channel,                // Destination channel index
+            outputStartSample,      // Destination start sample index
+            audioData,              // Source buffer
+            componentChannel,       // Source channel index
+            static_cast<int>(componentStartSample), // Source start sample index (cast needed)
+            availableComponentSamples, // Number of samples to copy
+            linearGain              // Gain factor to apply
+        );
     }
 }
 
@@ -248,94 +257,32 @@ std::string AudioComponentProcessor::getName() const {
     return name;
 }
 
-void AudioComponentProcessor::applyEffects(juce::AudioBuffer<float>& buffer) {
-    if (effects.empty()) {
-        return;
-    }
+void AudioComponentProcessor::prepare(double sampleRate, int maximumExpectedSamplesPerBlock) {
+    currentSampleRate = sampleRate;
+    currentBlockSize = maximumExpectedSamplesPerBlock;
     
-    // Create a block and context for processing
-    juce::dsp::AudioBlock<float> block(buffer);
-    juce::dsp::ProcessContextReplacing<float> context(block);
-    
-    // Process each effect
+    juce::dsp::ProcessSpec spec { sampleRate, 
+                                  static_cast<juce::uint32>(maximumExpectedSamplesPerBlock), 
+                                  static_cast<juce::uint32>(audioData.getNumChannels() > 0 ? audioData.getNumChannels() : 2) }; // Use 2 channels if audioData not set yet
+
+    // Prepare effects
     for (auto& [name, effect] : effects) {
         if (effect.processor) {
-            effect.processor->process(context);
+            effect.processor->prepare(spec);
         }
     }
+    
+    // TODO: Prepare pitch/tempo processors if they are added
 }
 
-void AudioComponentProcessor::applyPitchShift(juce::AudioBuffer<float>& buffer) {
-    // Simple pitch shift implementation
-    // Note: This is a very simple approach, a more sophisticated algorithm
-    // would be needed for high-quality pitch shifting
-    
-    const int numChannels = buffer.getNumChannels();
-    const int numSamples = buffer.getNumSamples();
-    
-    // Resample buffer with simple linear interpolation
-    double ratio = std::pow(2.0, pitchShift / 12.0);  // Convert semitones to ratio
-    
-    // Create a temporary buffer
-    juce::AudioBuffer<float> tempBuffer(numChannels, numSamples);
-    tempBuffer.clear();
-    
-    for (int channel = 0; channel < numChannels; ++channel) {
-        float* sourceData = buffer.getWritePointer(channel);
-        float* destData = tempBuffer.getWritePointer(channel);
-        
-        for (int i = 0; i < numSamples; ++i) {
-            double sourcePos = i * ratio;
-            
-            if (sourcePos < numSamples - 1) {
-                int pos1 = static_cast<int>(sourcePos);
-                int pos2 = pos1 + 1;
-                float alpha = static_cast<float>(sourcePos - pos1);
-                
-                destData[i] = sourceData[pos1] * (1.0f - alpha) + sourceData[pos2] * alpha;
-            } else {
-                destData[i] = 0.0f;  // Out of bounds
-            }
+void AudioComponentProcessor::reset() {
+     // Reset effects
+    for (auto& [name, effect] : effects) {
+        if (effect.processor) {
+            effect.processor->reset();
         }
     }
-    
-    // Copy back to original buffer
-    buffer.copyFrom(0, 0, tempBuffer, 0, 0, numSamples);
-}
-
-void AudioComponentProcessor::applyTempoAdjustment(juce::AudioBuffer<float>& buffer) {
-    // Simple time-stretching implementation
-    // Note: This is a very simple approach, a more sophisticated algorithm
-    // would be needed for high-quality time-stretching
-    
-    const int numChannels = buffer.getNumChannels();
-    const int numSamples = buffer.getNumSamples();
-    
-    // Create a temporary buffer
-    juce::AudioBuffer<float> tempBuffer(numChannels, numSamples);
-    tempBuffer.clear();
-    
-    for (int channel = 0; channel < numChannels; ++channel) {
-        float* sourceData = buffer.getWritePointer(channel);
-        float* destData = tempBuffer.getWritePointer(channel);
-        
-        for (int i = 0; i < numSamples; ++i) {
-            double sourcePos = i / tempoRatio;
-            
-            if (sourcePos < numSamples - 1) {
-                int pos1 = static_cast<int>(sourcePos);
-                int pos2 = pos1 + 1;
-                float alpha = static_cast<float>(sourcePos - pos1);
-                
-                destData[i] = sourceData[pos1] * (1.0f - alpha) + sourceData[pos2] * alpha;
-            } else {
-                destData[i] = 0.0f;  // Out of bounds
-            }
-        }
-    }
-    
-    // Copy back to original buffer
-    buffer.copyFrom(0, 0, tempBuffer, 0, 0, numSamples);
+    // TODO: Reset pitch/tempo processors if they are added
 }
 
 } // namespace audio

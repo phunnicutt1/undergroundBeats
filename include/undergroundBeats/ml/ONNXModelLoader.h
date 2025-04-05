@@ -1,88 +1,38 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <memory>
-#include <unordered_map>
-#include <juce_audio_basics/juce_audio_basics.h>
+#include <onnxruntime_cxx_api.h> // Include ONNX Runtime C++ API
 
 namespace undergroundBeats {
 namespace ml {
 
 /**
  * @class ONNXModelLoader
- * @brief Utility class for loading and using ONNX models
- * 
- * This class provides functionality to load ONNX models and run inference
- * for audio processing tasks.
+ * @brief Responsible for loading and managing ONNX models.
  */
 class ONNXModelLoader {
 public:
     /**
-     * @brief Constructor
+     * @brief Constructor. Initializes the ONNX Runtime environment.
      */
     ONNXModelLoader();
-    
+
     /**
-     * @brief Destructor
+     * @brief Destructor.
      */
     ~ONNXModelLoader();
-    
+
     /**
-     * @brief Load an ONNX model from file
-     * @param modelPath Path to the ONNX model file
-     * @return True if loading succeeds, false otherwise
+     * @brief Loads an ONNX model from the specified file path.
+     * @param modelPath Path to the .onnx model file.
+     * @return A unique pointer to the ONNX session if successful, nullptr otherwise.
      */
-    bool loadModel(const std::string& modelPath);
-    
-    /**
-     * @brief Run inference on audio data
-     * @param inputData Input audio data as a flat vector
-     * @param inputShape Shape of the input tensor
-     * @param outputNames Names of the output tensors to retrieve
-     * @return Map of output tensor names to output data
-     */
-    std::unordered_map<std::string, std::vector<float>> runInference(
-        const std::vector<float>& inputData,
-        const std::vector<int64_t>& inputShape,
-        const std::vector<std::string>& outputNames);
-    
-    /**
-     * @brief Check if a model is loaded
-     * @return True if a model is loaded, false otherwise
-     */
-    bool isModelLoaded() const;
-    
-    /**
-     * @brief Get the input tensor names
-     * @return Vector of input tensor names
-     */
-    std::vector<std::string> getInputNames() const;
-    
-    /**
-     * @brief Get the output tensor names
-     * @return Vector of output tensor names
-     */
-    std::vector<std::string> getOutputNames() const;
-    
-    /**
-     * @brief Get the input tensor shape
-     * @param inputName Name of the input tensor
-     * @return Vector representing the shape of the input tensor
-     */
-    std::vector<int64_t> getInputShape(const std::string& inputName) const;
-    
-    /**
-     * @brief Get the output tensor shape
-     * @param outputName Name of the output tensor
-     * @return Vector representing the shape of the output tensor
-     */
-    std::vector<int64_t> getOutputShape(const std::string& outputName) const;
-    
+    std::unique_ptr<Ort::Session> loadModel(const std::string& modelPath);
+
 private:
-    // Private implementation to hide ONNX dependencies
-    class Impl;
-    std::unique_ptr<Impl> pImpl;
+    Ort::Env env; // ONNX Runtime environment
+    Ort::SessionOptions sessionOptions; // Session options
 };
 
 } // namespace ml

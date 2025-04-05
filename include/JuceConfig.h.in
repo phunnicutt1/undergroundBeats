@@ -1,0 +1,6 @@
+#pragma once
+
+// This is a template file that CMake will configure
+// It provides paths to JUCE modules for the build system
+
+#define JUCE_MODULES_DIR "${JUCE_MODULES_DIR}" 
