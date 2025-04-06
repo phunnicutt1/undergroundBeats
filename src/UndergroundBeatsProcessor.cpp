@@ -139,6 +139,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout UndergroundBeatsProcessor::c
             [](const juce::String& text) { return text.removeCharacters(" dB").getFloatValue(); }
         ));
 
+        // Mute Parameter
+        auto muteParamID = getStemParameterID(i, "Mute");
+        auto muteParamName = "Stem " + juce::String(i) + " Mute";
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            muteParamID, muteParamName,
+            false));
+
+        // Solo Parameter
+        auto soloParamID = getStemParameterID(i, "Solo");
+        auto soloParamName = "Stem " + juce::String(i) + " Solo";
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            soloParamID, soloParamName,
+            false));
+
         // ===== EQ Parameters =====
         for (int band = 1; band <= 3; ++band)
         {
@@ -430,17 +444,17 @@ const std::vector<juce::AudioBuffer<float>>& UndergroundBeatsProcessor::getSepar
 //==============================================================================
 void UndergroundBeatsProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    std::cout << "Prepare to play called. Sample Rate: " << sampleRate << ", Block Size: " << samplesPerBlock << std::endl;
+    DBG("Processor::prepareToPlay - Sample Rate: " + juce::String(sampleRate) + 
+        ", Block Size: " + juce::String(samplesPerBlock));
 
     const int numStems = separatedStemBuffers.size();
-    const int numInputChannels = getTotalNumInputChannels();
     const int numOutputChannels = getTotalNumOutputChannels();
 
     // Prepare DSP chains for each stem
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
     spec.maximumBlockSize = samplesPerBlock;
-    spec.numChannels = numOutputChannels;
+    spec.numChannels = 2; // Always prepare for stereo processing regardless of input channels
 
     // Resize the vector of unique_ptrs first
     stemEffectChains.resize(numStems);
@@ -450,10 +464,71 @@ void UndergroundBeatsProcessor::prepareToPlay (double sampleRate, int samplesPer
         if (stemEffectChains[i] == nullptr)
         {
             stemEffectChains[i] = std::make_unique<StemEffectChain>();
+            DBG("  Created new effect chain for stem " + juce::String(i));
         }
-        // Prepare the chain (dereference the pointer)
-        stemEffectChains[i]->prepare(spec);
+        
+        try {
+            // Initialize delay line - must be done before prepare
+            auto& delay = stemEffectChains[i]->get<5>();
+            delay.reset();
+            delay.setMaximumDelayInSamples(sampleRate * 2.0); // 2 seconds max delay
+            
+            // Prepare the chain (dereference the pointer)
+            stemEffectChains[i]->prepare(spec);
+            
+            // Initialize default EQ parameters - flat response curve
+            for (int band = 0; band < 3; ++band) {
+                auto coefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+                    sampleRate, 
+                    band == 0 ? 100.0f : (band == 1 ? 1000.0f : 5000.0f), // Default frequencies
+                    1.0f, // Default Q
+                    1.0f  // Default gain (0dB)
+                );
+                
+                switch (band) {
+                    case 0: stemEffectChains[i]->get<0>().coefficients = coefficients; break;
+                    case 1: stemEffectChains[i]->get<1>().coefficients = coefficients; break;
+                    case 2: stemEffectChains[i]->get<2>().coefficients = coefficients; break;
+                }
+            }
+            
+            // Initialize compressor
+            auto& comp = stemEffectChains[i]->get<3>();
+            comp.setThreshold(-24.0f);
+            comp.setRatio(4.0f);
+            comp.setAttack(10.0f);
+            comp.setRelease(100.0f);
+            
+            // Initialize chorus
+            auto& chorus = stemEffectChains[i]->get<6>();
+            chorus.setRate(1.0f);
+            chorus.setDepth(0.25f);
+            chorus.setCentreDelay(7.0f);
+            chorus.setFeedback(0.0f);
+            chorus.setMix(0.5f);
+            
+            // Initialize saturation
+            auto& saturator = stemEffectChains[i]->get<7>();
+            saturator.functionToUse = [](float x) { return std::tanh(x); }; // Default saturation
+            
+            // Initialize final gain
+            auto& finalGain = stemEffectChains[i]->get<8>();
+            finalGain.setGainLinear(1.0f);
+            
+            // Reset the effects in the chain
+            stemEffectChains[i]->reset();
+            
+            DBG("  Successfully prepared effect chain for stem " + juce::String(i));
+        }
+        catch (const std::exception& e) {
+            DBG("  ERROR preparing effect chain for stem " + juce::String(i) + ": " + juce::String(e.what()));
+        }
     }
+    
+    // Reset playback state
+    playbackPosition = 0;
+    
+    DBG("Processor::prepareToPlay - Successfully prepared for " + juce::String(numStems) + " stems");
 }
 
 void UndergroundBeatsProcessor::releaseResources()
@@ -489,54 +564,98 @@ void UndergroundBeatsProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
+    // Clear any input channels that didn't contain input data
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
+    // Always clear the output buffer at the start
     buffer.clear();
 
+    // Get the number of available stems
     const int numStems = separatedStemBuffers.size();
+    
+    // If we have no stems, just return (nothing to play)
+    if (numStems == 0) {
+        DBG("Processor::processBlock - No stems available to play");
+        return;
+    }
 
-    int numSamples = buffer.getNumSamples();
-    int outputChannels = buffer.getNumChannels();
+    // Debug output - current playback state
+    DBG("Processor::processBlock - Playing: " + juce::String(playing.load() ? "Yes" : "No") + 
+        ", Paused: " + juce::String(paused.load() ? "Yes" : "No") +
+        ", Position: " + juce::String(playbackPosition));
 
+    // Only process audio if we're in playing state and not paused
     if (playing && !paused && numStems > 0)
     {
-        // DBG("Processor::processBlock - Processing block, numSamples: " + juce::String(numSamples) + ", numStems: " + juce::String(numStems)); // Optional general log
+        // Get buffer parameters
+        int numSamples = buffer.getNumSamples();
+        int outputChannels = buffer.getNumChannels();
 
-        // We will accumulate into the main buffer, so clear it first if necessary
-        // If the host buffer isn't guaranteed clear, uncomment the line below
-        // buffer.clear(); 
+        // First, check if any stem has solo enabled
+        bool anySoloActive = false;
+        for (int stemIdx = 0; stemIdx < numStems; ++stemIdx) {
+            auto soloParamID = getStemParameterID(stemIdx, "Solo");
+            auto* soloParam = valueTreeState.getRawParameterValue(soloParamID);
+            if (soloParam && soloParam->load() > 0.5f) {
+                anySoloActive = true;
+                break;
+            }
+        }
 
+        // Process each stem and add it to the output buffer
         for (int stemIdx = 0; stemIdx < numStems; ++stemIdx)
         {
-             DBG("  Processing Stem Index: " + juce::String(stemIdx));
+            DBG("  Processing Stem Index: " + juce::String(stemIdx));
 
-            if (stemEffectChains[stemIdx] == nullptr) {
-                 DBG("    Stem chain is null, skipping.");
-                 continue;
+            // Skip if effect chain not initialized
+            if (stemIdx >= stemEffectChains.size() || stemEffectChains[stemIdx] == nullptr) {
+                DBG("    Stem chain is null, skipping.");
+                continue;
             }
+            
+            // Skip if stem buffer not available
             if (stemIdx >= separatedStemBuffers.size() || separatedStemBuffers[stemIdx].getNumSamples() == 0) {
-                 DBG("    Stem buffer invalid or empty, skipping.");
-                 continue;
-             }
+                DBG("    Stem buffer invalid or empty, skipping.");
+                continue;
+            }
+            
+            // Check mute status
+            auto muteParamID = getStemParameterID(stemIdx, "Mute");
+            auto* muteParam = valueTreeState.getRawParameterValue(muteParamID);
+            bool isMuted = muteParam && muteParam->load() > 0.5f;
+            
+            // Check solo status
+            auto soloParamID = getStemParameterID(stemIdx, "Solo");
+            auto* soloParam = valueTreeState.getRawParameterValue(soloParamID);
+            bool isSoloed = soloParam && soloParam->load() > 0.5f;
+            
+            // Skip if muted or if any solo is active but this stem is not soloed
+            if (isMuted || (anySoloActive && !isSoloed)) {
+                DBG("    Stem is muted or not soloed, skipping.");
+                continue;
+            }
 
+            // Get stem buffer
             const auto& stemBuffer = separatedStemBuffers[stemIdx];
             int stemChannels = stemBuffer.getNumChannels();
             juce::int64 stemLength = stemBuffer.getNumSamples();
 
-             DBG("    Stem Length: " + juce::String(stemLength) + ", Current Playback Pos: " + juce::String(playbackPosition));
+            DBG("    Stem Length: " + juce::String(stemLength) + ", Current Playback Pos: " + juce::String(playbackPosition));
 
+            // Calculate samples available from current position
             juce::int64 samplesAvailable = stemLength - playbackPosition;
             if (samplesAvailable <= 0) {
-                 DBG("    No samples available at current position, skipping stem.");
-                 continue; // Or reset playbackPosition for this stem? Depends on desired loop behavior
+                DBG("    No samples available at current position, skipping stem.");
+                continue;
             }
 
+            // Determine how many samples to process in this block
             int samplesToProcess = (int) juce::jmin((juce::int64)numSamples, samplesAvailable);
-             DBG("    Samples to process for this block: " + juce::String(samplesToProcess));
+            DBG("    Samples to process for this block: " + juce::String(samplesToProcess));
 
             // Create a temporary buffer for processing this stem's block
-            // IMPORTANT: Ensure tempBuffer matches the number of channels expected by the *chain* (likely stereo)
+            // IMPORTANT: Ensure tempBuffer matches the number of channels expected by the chain (stereo)
             int chainChannels = 2; // Assuming chains are prepared for stereo
             juce::AudioBuffer<float> tempBuffer(chainChannels, samplesToProcess);
 
@@ -547,8 +666,7 @@ void UndergroundBeatsProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
                 int sourceChannel = juce::jmin(ch, stemChannels - 1); 
                 tempBuffer.copyFrom(ch, 0, stemBuffer, sourceChannel, (int)playbackPosition, samplesToProcess);
             }
-             DBG("    Copied stem data to temp buffer (handling mono->stereo).");
-
+            DBG("    Copied stem data to temp buffer (handling mono->stereo).");
 
             // === Update DSP parameters ===
             auto& chain = stemEffectChains[stemIdx];
@@ -616,22 +734,8 @@ void UndergroundBeatsProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
             chain->setBypassed<4>(!reverbEnable);
             
             // Update Delay params...
-            auto* delayEnableParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Enable"));
-            auto* delayTimeParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Time"));
-            auto* delayFeedbackParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Feedback"));
-            auto* delayMixParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Mix"));
-            bool delayEnable = delayEnableParam ? delayEnableParam->load() > 0.5f : false;
-            auto& delay = chain->get<5>();
-            double sampleRate = getSampleRate();
-            float delayTimeMs = delayTimeParam ? delayTimeParam->load() : 500.0f;
-            // delay.setDelay(delayTimeMs * sampleRate / 1000.0f); // Assuming DelayLine uses samples
-            // TODO: Check how juce::dsp::DelayLine sets delay (samples or seconds?)
-            // Assuming it needs samples for now, but the API might differ.
-            // Let's skip setting delay for now to avoid potential issues if API is different.
-            // if(delayFeedbackParam) delay.setFeedback(delayFeedbackParam->load());
-            // if(delayMixParam) delay.setMix(delayMixParam->load());
-            chain->setBypassed<5>(!delayEnable);
-            
+            // Delay parameters implementation skipped to avoid compatibility issues
+
             // Update Chorus params...
             auto* chorusEnableParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_Enable"));
             auto* chorusRateParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_Rate"));
@@ -657,64 +761,56 @@ void UndergroundBeatsProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
             saturator.functionToUse = [satAmount](float x) { return std::tanh(satAmount * x); };
             chain->setBypassed<7>(!satEnable);
 
-            // Style Transfer Gain (Placeholder)
-            auto& styleGain = chain->get<8>();
-            styleGain.setGainLinear(1.0f); // Keep as placeholder
-            chain->setBypassed<8>(true); // Keep bypassed for now
-            
             // Calculate Final Gain
             auto* volumeParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Volume"));
             auto* gainDbParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Gain"));
             float volume = volumeParam ? volumeParam->load() : 0.8f;
             float gainDb = gainDbParam ? gainDbParam->load() : 0.0f;
             float linearGain = volume * juce::Decibels::decibelsToGain(gainDb);
-             DBG("    Volume: " + juce::String(volume) + ", Gain(dB): " + juce::String(gainDb) + ", Linear Gain: " + juce::String(linearGain));
+            
+            DBG("    Stem " + juce::String(stemIdx) + " Volume: " + juce::String(volume) + 
+                ", Gain(dB): " + juce::String(gainDb) + 
+                ", Linear Gain: " + juce::String(linearGain));
 
             // Process the temporary buffer through the effect chain
             juce::dsp::AudioBlock<float> block(tempBuffer);
             juce::dsp::ProcessContextReplacing<float> context(block);
-             DBG("    Processing audio block through effect chain...");
+            DBG("    Processing audio block through effect chain...");
             chain->process(context);
-             DBG("    Processing complete.");
+            DBG("    Processing complete.");
 
             // Add the processed temporary buffer to the main output buffer
-             DBG("    Adding processed stem to main output buffer...");
+            DBG("    Adding processed stem to main output buffer...");
             for (int ch = 0; ch < outputChannels; ++ch)
             {
                 // Ensure we read from the correct channel of the potentially stereo tempBuffer
-                buffer.addFrom(ch, 0, tempBuffer, ch, 0, samplesToProcess, linearGain);
+                int sourceChannel = juce::jmin(ch, chainChannels - 1);
+                buffer.addFrom(ch, 0, tempBuffer, sourceChannel, 0, samplesToProcess, linearGain);
             }
-             DBG("    Stem added to output.");
+            DBG("    Stem added to output (gain: " + juce::String(linearGain) + ")");
         }
 
-        // Update global playback position - consider if this logic is correct
-        // Does it need to be stem-specific if stems have different lengths?
-        // For now, assume shortest stem dictates loop point.
+        // Update global playback position
         juce::int64 minLength = -1;
         for (int stemIdx = 0; stemIdx < numStems; ++stemIdx) {
-             if (stemIdx < separatedStemBuffers.size()) {
-                 auto len = separatedStemBuffers[stemIdx].getNumSamples();
-                 if (minLength == -1 || len < minLength)
-                     minLength = len;
-             }
+            if (stemIdx < separatedStemBuffers.size()) {
+                auto len = separatedStemBuffers[stemIdx].getNumSamples();
+                if (minLength == -1 || len < minLength)
+                    minLength = len;
+            }
         }
 
         if (minLength > 0) {
-             playbackPosition += numSamples;
-             if (playbackPosition >= minLength) {
-                 DBG("  Playback position wrapped around.");
-                 playbackPosition = 0; // Wrap around
-             }
+            playbackPosition += numSamples;
+            if (playbackPosition >= minLength) {
+                DBG("  Playback position wrapped around. Resetting to beginning.");
+                playbackPosition = 0; // Wrap around (loop)
+            }
         } else {
-             playbackPosition = 0; // Reset if no valid stems
+            playbackPosition = 0; // Reset if no valid stems
         }
-         DBG("  Updated Playback Position: " + juce::String(playbackPosition));
-
-    }
-    else
-    {
-        // If not playing or no stems, ensure buffer is cleared
-        // buffer.clear(); // Usually good practice unless host guarantees it
+        
+        DBG("  Updated Playback Position: " + juce::String(playbackPosition) + "/" + juce::String(minLength));
     }
 }
 

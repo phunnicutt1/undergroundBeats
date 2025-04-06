@@ -14,7 +14,8 @@ namespace undergroundBeats {
  */
 class SampleBrowserComponent : public juce::Component,
                                public juce::FileBrowserListener,
-                               public juce::Button::Listener,
+                               private juce::Button::Listener,
+                               private juce::Timer,
                                public juce::FileDragAndDropTarget,
                                public juce::ChangeBroadcaster
 {
@@ -52,6 +53,12 @@ public:
     // ** NEW ** Check if a file is suitable (delegates to fileFilter)
     bool isFileSuitable(const juce::File& file) const { return fileFilter.isFileSuitable(file); }
 
+    // Start previewing a sample
+    void startPreview(const juce::File& file);
+    
+    // Stop previewing
+    void stopPreview();
+
 private:
     // Use the custom audio file filter
     AudioFileFilter fileFilter;
@@ -73,9 +80,19 @@ private:
     // Drag highlight flag
     bool isShowingDragHighlight = false;
 
-    // Helpers
-    void startPreview(const juce::File& file);
-    void stopPreview();
+    // Timer callback for updating preview
+    void timerCallback() override;
+    
+    // Create a new wildcard filter for audio files
+    static juce::WildcardFileFilter* createAudioFileFilter();
+    
+    // Add a file to the recent files list
+    void addToRecentFiles(const juce::File& file);
+    
+    // Setup preview components
+    void setupPreviewComponents();
+
+    // Content component for file browser
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleBrowserComponent)
 };

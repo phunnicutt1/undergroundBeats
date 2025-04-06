@@ -256,4 +256,19 @@ void SampleBrowserComponent::stopPreview()
     }
 }
 
+void SampleBrowserComponent::timerCallback()
+{
+    // This method is required for the Timer interface
+    // It could be used for updating transport time or playback position
+    DBG("SampleBrowserComponent: timerCallback");
+    
+    // Example: Update UI based on transport state if needed
+    if (transportSource.isPlaying())
+    {
+        // Could update a position indicator or waveform display
+        // For now, just log the current position
+        DBG("Current playback position: " + juce::String(transportSource.getCurrentPosition()));
+    }
+}
+
 } // namespace undergroundBeats

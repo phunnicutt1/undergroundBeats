@@ -2,6 +2,7 @@
 
 #include "JuceHeader.h"
 #include "WaveformDisplay.h"
+#include "../UndergroundBeatsProcessor.h"
 
 namespace undergroundBeats {
 
@@ -9,7 +10,9 @@ namespace undergroundBeats {
  * A component that groups a WaveformDisplay with controls
  * for a single audio stem.
  */
-class StemControlPanel : public juce::Component
+class StemControlPanel : public juce::Component,
+                         private juce::Button::Listener,
+                         private juce::Slider::Listener
 {
 public:
     /**
@@ -45,6 +48,7 @@ public:
         volumeSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 50, 20);
         volumeSlider.setColour(juce::Slider::thumbColourId, stemColor);
         volumeSlider.setColour(juce::Slider::trackColourId, stemColor.withAlpha(0.5f));
+        volumeSlider.addListener(this);
         addAndMakeVisible(volumeSlider);
 
         // Gain slider - make more prominent
@@ -60,6 +64,7 @@ public:
         gainSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 50, 20);
         gainSlider.setColour(juce::Slider::thumbColourId, stemColor);
         gainSlider.setColour(juce::Slider::trackColourId, stemColor.withAlpha(0.5f));
+        gainSlider.addListener(this);
         addAndMakeVisible(gainSlider);
 
         // Solo button - make more prominent
@@ -68,6 +73,7 @@ public:
         soloButton.setColour(juce::TextButton::buttonColourId, juce::Colours::darkgreen);
         soloButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::green);
         soloButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        soloButton.addListener(this);
         addAndMakeVisible(soloButton);
 
         // Mute button - make more prominent
@@ -76,6 +82,7 @@ public:
         muteButton.setColour(juce::TextButton::buttonColourId, juce::Colours::darkred);
         muteButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::red);
         muteButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        muteButton.addListener(this);
         addAndMakeVisible(muteButton);
 
         // Zoom slider - make more intuitive
@@ -85,6 +92,7 @@ public:
         zoomSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
         zoomSlider.setColour(juce::Slider::thumbColourId, stemColor);
         zoomSlider.setTooltip("Zoom");
+        zoomSlider.addListener(this);
         addAndMakeVisible(zoomSlider);
 
         // Accessibility (to be expanded)
@@ -171,10 +179,127 @@ public:
         waveformDisplay.setZoomFactor(zoom);
         zoomSlider.setValue(zoom, juce::dontSendNotification);
     }
+    
+    // Set the processor and stem index
+    void setProcessorAndStem(UndergroundBeatsProcessor* processor, int stemIdx)
+    {
+        processorRef = processor;
+        stemIndex = stemIdx;
+        
+        if (processorRef != nullptr)
+        {
+            // Connect to parameters
+            updateControlsFromProcessor();
+        }
+    }
+    
+    // Update controls from processor parameters
+    void updateControlsFromProcessor()
+    {
+        if (processorRef == nullptr)
+            return;
+            
+        auto& vts = processorRef->getValueTreeState();
+        
+        // Volume
+        auto volumeParamID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Volume");
+        auto* volumeParam = vts.getParameter(volumeParamID);
+        if (volumeParam != nullptr)
+            volumeSlider.setValue(volumeParam->getValue(), juce::dontSendNotification);
+            
+        // Gain
+        auto gainParamID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Gain");
+        auto* gainParam = vts.getParameter(gainParamID);
+        if (gainParam != nullptr)
+        {
+            const auto range = vts.getParameterRange(gainParamID);
+            float gainValue = range.convertFrom0to1(gainParam->getValue());
+            gainSlider.setValue(gainValue, juce::dontSendNotification);
+        }
+        
+        // Solo
+        auto soloParamID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Solo");
+        auto* soloParam = vts.getParameter(soloParamID);
+        if (soloParam != nullptr)
+            soloButton.setToggleState(soloParam->getValue() > 0.5f, juce::dontSendNotification);
+            
+        // Mute
+        auto muteParamID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Mute");
+        auto* muteParam = vts.getParameter(muteParamID);
+        if (muteParam != nullptr)
+            muteButton.setToggleState(muteParam->getValue() > 0.5f, juce::dontSendNotification);
+    }
 
 private:
+    // Button listener implementation
+    void buttonClicked(juce::Button* button) override
+    {
+        if (processorRef == nullptr)
+            return;
+            
+        if (button == &soloButton)
+        {
+            bool isSolo = soloButton.getToggleState();
+            auto paramID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Solo");
+            auto* param = processorRef->getValueTreeState().getParameter(paramID);
+            if (param != nullptr)
+                param->setValueNotifyingHost(isSolo ? 1.0f : 0.0f);
+        }
+        else if (button == &muteButton)
+        {
+            bool isMuted = muteButton.getToggleState();
+            auto paramID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Mute");
+            auto* param = processorRef->getValueTreeState().getParameter(paramID);
+            if (param != nullptr)
+                param->setValueNotifyingHost(isMuted ? 1.0f : 0.0f);
+        }
+    }
+    
+    // Slider listener implementation
+    void sliderValueChanged(juce::Slider* slider) override
+    {
+        if (processorRef == nullptr)
+            return;
+            
+        if (slider == &volumeSlider)
+        {
+            auto paramID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Volume");
+            auto* param = processorRef->getValueTreeState().getParameter(paramID);
+            if (param != nullptr)
+            {
+                // We need to convert the slider's value to the normalized range
+                const auto range = processorRef->getValueTreeState().getParameterRange(paramID);
+                float normalizedValue = range.convertTo0to1((float)slider->getValue());
+                param->setValueNotifyingHost(normalizedValue);
+                DBG("Setting Volume param " + paramID + " to: " + juce::String(normalizedValue));
+            }
+        }
+        else if (slider == &gainSlider)
+        {
+            auto paramID = UndergroundBeatsProcessor::getStemParameterID(stemIndex, "Gain");
+            auto* param = processorRef->getValueTreeState().getParameter(paramID);
+            if (param != nullptr)
+            {
+                // Convert from dB to 0-1 normalized value
+                const auto range = processorRef->getValueTreeState().getParameterRange(paramID);
+                // Clamp the value to the valid range first
+                float clampedValue = juce::jlimit(range.start, range.end, (float)slider->getValue());
+                float normalizedValue = range.convertTo0to1(clampedValue);
+                param->setValueNotifyingHost(normalizedValue);
+                DBG("Setting Gain param " + paramID + " to normalized: " + juce::String(normalizedValue) 
+                    + " (from " + juce::String(clampedValue) + " dB)");
+            }
+        }
+        else if (slider == &zoomSlider)
+        {
+            waveformDisplay.setZoomFactor((float)slider->getValue());
+        }
+    }
+
     juce::String stemName;
     juce::Colour stemColor;
+    int stemIndex = 0;
+    UndergroundBeatsProcessor* processorRef = nullptr;
 
     juce::Label nameLabel;
     WaveformDisplay waveformDisplay;

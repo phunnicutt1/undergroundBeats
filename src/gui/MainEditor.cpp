@@ -30,7 +30,12 @@ MainEditor::MainEditor(UndergroundBeatsProcessor& processor)
     // These should now work as full definitions are included
     sidebar = std::make_unique<SidebarComponent>();
     topBar = std::make_unique<TopBarComponent>(processorRef, *sidebar);
+    
+    // Create transport controls with processor reference
+    DBG("MainEditor: Creating TransportControls with processor reference");
     transportControls = std::make_unique<TransportControls>();
+    transportControls->setProcessor(&processorRef); // Set direct processor reference
+    
     eqPanel = std::make_unique<EQPanelComponent>();
     compressorPanel = std::make_unique<CompressorPanelComponent>();
     reverbPanel = std::make_unique<ReverbPanelComponent>();
@@ -52,10 +57,29 @@ MainEditor::MainEditor(UndergroundBeatsProcessor& processor)
     addAndMakeVisible(topBar.get());
     addAndMakeVisible(effectIconBar.get());
 
-    // Connect transport controls to processor using callbacks
-    transportControls->onPlay = [this] { processorRef.startPlayback(); };
-    transportControls->onPause = [this] { processorRef.pausePlayback(); };
-    transportControls->onStop = [this] { processorRef.stopPlayback(); };
+    // Connect transport controls to processor using callbacks AS BACKUP
+    DBG("MainEditor: Setting up transport control callbacks");
+    transportControls->onPlay = [this] { 
+        DBG("MainEditor: Play button clicked, calling processor startPlayback()");
+        // Stop any preview playback in the sample browser
+        if (sidebar && sidebar->getSampleBrowser())
+        {
+            sidebar->getSampleBrowser()->stopPreview();
+            DBG("MainEditor: Stopped sample browser preview");
+        }
+        processorRef.startPlayback(); 
+    };
+    transportControls->onPause = [this] { 
+        DBG("MainEditor: Pause button clicked, calling processor pausePlayback()");
+        processorRef.pausePlayback(); 
+    };
+    transportControls->onStop = [this] { 
+        DBG("MainEditor: Stop button clicked, calling processor stopPlayback()");
+        processorRef.stopPlayback(); 
+    };
+    
+    // Verify transport controls are set up
+    DBG("MainEditor: Transport controls connected to processor");
 
     // Add effect panels
     addAndMakeVisible(eqPanel.get());
@@ -118,6 +142,17 @@ void MainEditor::timerCallback()
         DBG("MainEditor: Processor parameters changed, updating stem displays");
         updateStemDisplays();
     }
+    
+    // Update transport controls UI based on processor state
+    bool isPlaying = processorRef.isPlaying();
+    bool isPaused = processorRef.isPaused();
+    transportControls->updateState(isPlaying || isPaused, isPaused);
+    
+    // Update each stem control panel from processor parameters
+    for (auto& panel : stemPanels)
+    {
+        panel->updateControlsFromProcessor();
+    }
 }
 
 void MainEditor::updateStemDisplays()
@@ -159,10 +194,11 @@ void MainEditor::updateStemDisplays()
         stemPanels.push_back(std::move(panel));
     }
     
-    // Update each panel with its corresponding buffer
+    // Update each panel with its corresponding buffer and connect to processor
     for (int i = 0; i < numStems; ++i)
     {
         stemPanels[i]->setAudioBuffer(&stemBuffers[i]);
+        stemPanels[i]->setProcessorAndStem(&processorRef, i); // Connect to processor
     }
     
     // Update layout
@@ -232,6 +268,15 @@ void MainEditor::toggleEQPanel()
 {
     bool visible = !eqPanel->isVisible();
     eqPanel->setVisible(visible);
+    
+    // Connect to processor when shown
+    if (visible)
+    {
+        // Get the selected stem index or default to 0
+        int stemIndex = 0; // Default to first stem
+        eqPanel->setProcessorAndStem(&processorRef, stemIndex);
+    }
+    
     compressorPanel->setVisible(false);
     reverbPanel->setVisible(false);
     delayPanel->setVisible(false);

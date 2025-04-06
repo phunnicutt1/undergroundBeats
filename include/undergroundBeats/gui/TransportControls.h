@@ -6,50 +6,56 @@
 namespace undergroundBeats {
 
 /**
- * Transport controls component providing play, pause, and stop buttons
- * for controlling audio playback.
+ * A component that provides playback controls.
  */
 class TransportControls : public juce::Component,
-                        public juce::Button::Listener
+                          public juce::Button::Listener,
+                          public juce::Timer
 {
 public:
-    /**
-     * Default constructor.
-     */
+    /** Default constructor. */
     TransportControls();
-    
-    /**
-     * Constructor.
-     * @param processor Reference to the audio processor.
-     */
+
+    /** Constructor with processor. */
     TransportControls(UndergroundBeatsProcessor& processor);
-    
+
     /** Destructor. */
     ~TransportControls() override;
 
-    /** Paint method. */
-    void paint(juce::Graphics& g) override;
-    
-    /** Component resized method. */
-    void resized() override;
-    
-    /** Button clicked event handler. */
-    void buttonClicked(juce::Button* button) override;
+    //==============================================================================
+    /** Paint the component. */
+    void paint(juce::Graphics&) override;
 
-    // Callbacks for transport actions
+    /** Handle resizing. */
+    void resized() override;
+
+    /** Update the transport controls based on the processor state. */
+    void updateState(bool isPlaying, bool isPaused);
+    
+    /** Set the processor to use for direct control. */
+    void setProcessor(UndergroundBeatsProcessor* processor);
+
+    // Callbacks
     std::function<void()> onPlay;
     std::function<void()> onPause;
     std::function<void()> onStop;
 
 private:
-    juce::TextButton playButton {"Play"};
-    juce::TextButton pauseButton {"Pause"};
-    juce::TextButton stopButton {"Stop"};
+    //==============================================================================
+    /** Handle button clicks. */
+    void buttonClicked(juce::Button* button) override;
     
-    // Reference to the audio processor (can be null)
-    UndergroundBeatsProcessor* audioProcessor = nullptr;
+    /** Timer callback for UI animations. */
+    void timerCallback() override;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportControls)
+    juce::TextButton playButton;
+    juce::TextButton pauseButton;
+    juce::TextButton stopButton;
+
+    // The processor that we'll control
+    UndergroundBeatsProcessor* audioProcessor;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TransportControls)
 };
 
 } // namespace undergroundBeats
