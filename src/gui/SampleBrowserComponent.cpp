@@ -1,6 +1,8 @@
 #include "../../include/undergroundBeats/gui/SampleBrowserComponent.h"
 #include "JuceHeader.h"
 
+namespace undergroundBeats {
+
 //==============================================================================
 SampleBrowserComponent::SampleBrowserComponent()
     // fileFilter is default-constructed (now uses AudioFileFilter)
@@ -76,46 +78,47 @@ void SampleBrowserComponent::resized()
 //==============================================================================
 void SampleBrowserComponent::selectionChanged()
 {
-    DBG("SampleBrowserComponent: selectionChanged");
-    // This is called when the user selects a file in the browser
-    stopPreview();
+    // This is called when the user selects a file or directory
+    selectedFile = fileBrowser->getSelectedFile(0);
+    DBG("SampleBrowserComponent: selectionChanged - Selected: " + selectedFile.getFileName());
     
-    if (fileBrowser->getNumSelectedFiles() > 0)
+    // Stop preview if selection changes to something invalid or a directory
+    if (!selectedFile.existsAsFile() || !fileFilter.isFileSuitable(selectedFile))
     {
-        selectedFile = fileBrowser->getSelectedFile(0);
-        DBG("Selected file: " + selectedFile.getFullPathName());
+        stopPreview();
     }
-    else
-    {
-        DBG("Selection cleared.");
-        selectedFile = juce::File(); // Clear selection
-    }
+    // Optionally start preview on single click (if desired)
+    // else { startPreview(selectedFile); }
+
+    // Broadcast that the selection has changed
+    sendChangeMessage(); 
 }
 
-void SampleBrowserComponent::fileClicked(const juce::File& file, const juce::MouseEvent& e)
+void SampleBrowserComponent::fileClicked(const juce::File& file, const juce::MouseEvent& /*e*/)
 {
-    DBG("SampleBrowserComponent: fileClicked - " + file.getFileName() + ", Clicks: " + juce::String(e.getNumberOfClicks()));
-    // This is called when the user clicks on a file in the browser
-    selectedFile = file;
-    
-    if (e.getNumberOfClicks() == 2)
-    {
-        startPreview(file);
-    }
+     // Handle single click if needed, e.g., for selection without preview
+     // Currently selectionChanged handles selection logic
+     juce::ignoreUnused(file);
 }
 
 void SampleBrowserComponent::fileDoubleClicked(const juce::File& file)
 {
     DBG("SampleBrowserComponent: fileDoubleClicked - " + file.getFileName());
-    // This is called when the user double-clicks on a file in the browser
-    selectedFile = file;
-    startPreview(file);
+    // Stop any existing preview first
+    stopPreview(); 
     
-    // Notify listeners if a callback is set
-    if (onSampleDropped)
+    // Play preview for double-clicked file
+    startPreview(file);
+
+    // ** NEW ** Trigger the callback to notify the processor
+    if (onFileChosenForProcessing)
     {
-        DBG("Calling onSampleDropped callback.");
-        onSampleDropped(file);
+        DBG("SampleBrowserComponent: Calling onFileChosenForProcessing callback.");
+        onFileChosenForProcessing(file);
+    }
+    else
+    {
+         DBG("SampleBrowserComponent: No onFileChosenForProcessing callback set.");
     }
 }
 
@@ -252,3 +255,5 @@ void SampleBrowserComponent::stopPreview()
         playButton.setButtonText("Play");
     }
 }
+
+} // namespace undergroundBeats

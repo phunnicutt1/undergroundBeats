@@ -27,6 +27,7 @@ target_sources(UndergroundBeats PRIVATE
     src/Main.cpp
     src/UndergroundBeatsProcessor.cpp
     src/ml/ONNXModelLoader.cpp
+    src/ml/ONNXSourceSeparator.cpp
     src/gui/WaveformDisplay.cpp
     src/gui/MainEditor.cpp
     src/gui/TopBarComponent.cpp

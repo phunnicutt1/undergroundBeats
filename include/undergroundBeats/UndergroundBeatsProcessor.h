@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -11,6 +10,8 @@
 #include <juce_dsp/juce_dsp.h>
 #include <vector>
 #include <atomic> // For atomic flag
+#include <functional>
+#include "ml/ONNXModelLoader.h" // Use quotes for local header
 
 // Add a namespace to match the namespace used in Main.cpp
 namespace undergroundBeats {
@@ -133,24 +134,31 @@ private:
         juce::dsp::IIR::Filter<float>,  // EQ Band 2
         juce::dsp::IIR::Filter<float>,  // EQ Band 3
         juce::dsp::Compressor<float>,   // Compressor
+        juce::dsp::Reverb,              // Reverb
+        juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear>, // Delay
+        juce::dsp::Chorus<float>,       // Chorus
+        juce::dsp::WaveShaper<float, std::function<float(float)>>,   // Saturation (std::function)
         juce::dsp::Gain<float>          // Placeholder Style Transfer
     >;
 
-    std::vector<StemEffectChain> stemEffectChains;
+    std::vector<std::unique_ptr<StemEffectChain>> stemEffectChains; // Use unique_ptr
 
     //==============================================================================
     // Playback State Variables (NEW)
     std::atomic<bool> playing { false }; // Use atomic for thread safety from UI calls
     std::atomic<bool> paused { false };
+    juce::int64 playbackPosition { 0 }; // Current playback position in samples
     // Add other necessary state variables like current position, sample rate etc.
     // double currentSampleRate = 0.0;
-    // juce::int64 currentSamplePosition = 0; // Example position tracking
     
     // Audio file related members
     juce::AudioFormatManager formatManager;
     std::unique_ptr<juce::AudioFormatReader> currentAudioReader;
     juce::AudioBuffer<float> audioBuffer;
     juce::File currentAudioFile;
+
+    // ML related members (NEW)
+    ml::ONNXModelLoader modelLoader; // Instance of the model loader
 
     // Stem separation related members (NEW)
     std::vector<juce::AudioBuffer<float>> separatedStemBuffers;

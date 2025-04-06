@@ -1,35 +1,30 @@
 // ONNXModelLoader.cpp
 
-#include "ONNXModelLoader.h"
+#include "../../include/undergroundBeats/ml/ONNXModelLoader.h"
 #include <stdexcept>
 
-// Constructor: Initializes the ONNX Runtime environment and loads the model.
-ONNXModelLoader::ONNXModelLoader(const std::string& modelPath)
-    : env(ORT_LOGGING_LEVEL_WARNING, "ONNXModelLoader"),
-      session(env, modelPath.c_str(), Ort::SessionOptions{nullptr}),
-      loaded(true)
+namespace undergroundBeats {
+namespace ml {
+
+// Constructor: Initializes the ONNX Runtime environment.
+// We don't load the model here anymore, just create the environment.
+ONNXModelLoader::ONNXModelLoader()
+    : env(ORT_LOGGING_LEVEL_WARNING, "ONNXModelLoaderEnv")
 {
-    // Additional session configurations can be added here if necessary.
+    // Initialization, potentially setup OrtEnv options
 }
 
 // Destructor: Handles any necessary cleanup.
 ONNXModelLoader::~ONNXModelLoader()
 {
-    // Destructor logic if needed.
+    // Destructor logic if needed (OrtEnv handles its own cleanup).
 }
 
-// Returns the ONNX Runtime session.
-Ort::Session& ONNXModelLoader::getSession()
+// Returns the ONNX Runtime environment.
+Ort::Env& ONNXModelLoader::getEnvironment()
 {
-    if (!loaded)
-    {
-        throw std::runtime_error("Model is not loaded.");
-    }
-    return session;
+    return env;
 }
 
-// Checks if the model has been successfully loaded.
-bool ONNXModelLoader::isModelLoaded() const
-{
-    return loaded;
-}
+} // namespace ml
+} // namespace undergroundBeats

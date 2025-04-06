@@ -1,5 +1,7 @@
 #include "../../../include/undergroundBeats/gui/panels/EQPanelComponent.h"
 
+namespace undergroundBeats {
+
 EQPanelComponent::EQPanelComponent()
 {
     setSize(500, 300);
@@ -21,3 +23,5 @@ void EQPanelComponent::resized()
 {
     // Layout controls when implemented
 } 
+
+} // namespace undergroundBeats 

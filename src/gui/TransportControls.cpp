@@ -80,21 +80,20 @@ void TransportControls::resized()
 //==============================================================================
 void TransportControls::buttonClicked(juce::Button* button)
 {
-    // Can't control playback without processor
-    if (!audioProcessor)
-        return;
-    
     if (button == &playButton)
     {
-        audioProcessor->startPlayback();
+        DBG("Transport: Play clicked");
+        if (onPlay) onPlay();
     }
     else if (button == &pauseButton)
     {
-        audioProcessor->pausePlayback();
+         DBG("Transport: Pause clicked");
+        if (onPause) onPause();
     }
     else if (button == &stopButton)
     {
-        audioProcessor->stopPlayback();
+         DBG("Transport: Stop clicked");
+        if (onStop) onStop();
     }
 }
 

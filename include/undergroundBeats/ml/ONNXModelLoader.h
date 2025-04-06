@@ -30,6 +30,11 @@ public:
      */
     std::unique_ptr<Ort::Session> loadModel(const std::string& modelPath);
 
+    /**
+     * @brief Returns a reference to the ONNX Runtime environment.
+     */
+    Ort::Env& getEnvironment();
+
 private:
     Ort::Env env; // ONNX Runtime environment
     Ort::SessionOptions sessionOptions; // Session options

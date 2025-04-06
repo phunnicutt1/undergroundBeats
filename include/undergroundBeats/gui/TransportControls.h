@@ -36,6 +36,11 @@ public:
     /** Button clicked event handler. */
     void buttonClicked(juce::Button* button) override;
 
+    // Callbacks for transport actions
+    std::function<void()> onPlay;
+    std::function<void()> onPause;
+    std::function<void()> onStop;
+
 private:
     juce::TextButton playButton {"Play"};
     juce::TextButton pauseButton {"Pause"};

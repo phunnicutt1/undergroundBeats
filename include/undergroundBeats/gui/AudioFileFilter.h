@@ -2,6 +2,8 @@
 
 #include "JuceHeader.h"
 
+namespace undergroundBeats {
+
 /**
  * A custom file filter that checks for specific audio file extensions.
  * This is needed because WildcardFileFilter seems unreliable in this context.
@@ -27,3 +29,5 @@ public:
         return true;
     }
 }; 
+
+} // namespace undergroundBeats 

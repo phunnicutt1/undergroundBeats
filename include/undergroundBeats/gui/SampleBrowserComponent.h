@@ -7,13 +7,16 @@
 // Forward declaration for the constructor argument
 namespace juce { class FilePreviewComponent; }
 
+namespace undergroundBeats {
+
 /**
  * Displays a filtered file browser for audio samples with preview and drag support.
  */
 class SampleBrowserComponent : public juce::Component,
                                public juce::FileBrowserListener,
                                public juce::Button::Listener,
-                               public juce::FileDragAndDropTarget
+                               public juce::FileDragAndDropTarget,
+                               public juce::ChangeBroadcaster
 {
 public:
     SampleBrowserComponent();
@@ -39,6 +42,15 @@ public:
 
     // Set callback to notify when a file is dragged and dropped externally
     std::function<void(const juce::File&)> onSampleDropped;
+
+    // ** NEW ** Callback for when a file is chosen via double-click
+    std::function<void(const juce::File&)> onFileChosenForProcessing;
+    
+    // ** NEW ** Get the currently selected file
+    juce::File getSelectedFile() const { return selectedFile; }
+    
+    // ** NEW ** Check if a file is suitable (delegates to fileFilter)
+    bool isFileSuitable(const juce::File& file) const { return fileFilter.isFileSuitable(file); }
 
 private:
     // Use the custom audio file filter
@@ -67,3 +79,5 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleBrowserComponent)
 };
+
+} // namespace undergroundBeats

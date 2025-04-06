@@ -1,66 +1,78 @@
 #pragma once
 
-// Use the central JUCE header
 #include "JuceHeader.h"
-#include "TransportControls.h" // Include the new TransportControls header
-#include "StemControlPanel.h"  // Include StemControlPanel header
-#include "SidebarComponent.h"  // Include SidebarComponent
-#include "TopBarComponent.h"   // Include TopBarComponent
-#include "panels/EQPanelComponent.h"
-#include "panels/CompressorPanelComponent.h"
-#include "panels/StyleTransferPanelComponent.h"
-#include "panels/VariationExplorerComponent.h"
-#include <vector>              // Include for std::vector
-#include <memory>              // Include for std::unique_ptr
+#include <vector>
+#include <memory>
+
+namespace undergroundBeats
+{
 
 // Forward declarations
-namespace undergroundBeats {
-    class UndergroundBeatsProcessor;
+class UndergroundBeatsProcessor;
+class TransportControls;
+class SidebarComponent;
+class TopBarComponent;
+class EQPanelComponent;
+class CompressorPanelComponent;
+class ReverbPanelComponent;
+class DelayPanelComponent;
+class ChorusPanelComponent;
+class SaturationPanelComponent;
+class StyleTransferPanelComponent;
+class EffectIconBarComponent;
+class StemControlPanel;
 
-    /**
-     * The main editor component for the UndergroundBeats application.
-     * Manages the overall UI layout and interactions.
-     */
-    class MainEditor : public juce::AudioProcessorEditor
-    {
-    public:
-        MainEditor(UndergroundBeatsProcessor& processor);
-        ~MainEditor() override;
+//==============================================================================
+class MainEditor : public juce::AudioProcessorEditor,
+                   private juce::Timer
+{
+  public:
+    MainEditor(UndergroundBeatsProcessor&);
+    ~MainEditor() override; // Definition must be in .cpp where SidebarComponent etc. are fully defined
 
-        /** Called when the editor is resized */
-        void resized() override;
-        
-        /** Called to paint the editor */
-        void paint(juce::Graphics& g) override;
+    //==============================================================================
+    void resized() override;
+    //==============================================================================
+    void paint(juce::Graphics& g) override;
 
-    private:
-        /** Reference to the processor */
-        UndergroundBeatsProcessor& audioProcessor;
+  private:
+    // Timer callback to check for processor updates
+    void timerCallback() override;
+    
+    // Update the stem displays with the latest audio buffers
+    void updateStemDisplays();
 
-        /** Transport controls for playback */
-        TransportControls transportControls;
+    UndergroundBeatsProcessor& processorRef;
 
-        /** The sidebar containing samples and presets */
-        SidebarComponent sidebar;
+    // Unique pointers require full definition visibility in .cpp for destructor
+    std::unique_ptr<TransportControls> transportControls;
+    std::unique_ptr<SidebarComponent> sidebar;
+    std::unique_ptr<TopBarComponent> topBar;
+    std::unique_ptr<EQPanelComponent> eqPanel;
+    std::unique_ptr<CompressorPanelComponent> compressorPanel;
+    std::unique_ptr<ReverbPanelComponent> reverbPanel;
+    std::unique_ptr<DelayPanelComponent> delayPanel;
+    std::unique_ptr<ChorusPanelComponent> chorusPanel;
+    std::unique_ptr<SaturationPanelComponent> saturationPanel;
+    std::unique_ptr<StyleTransferPanelComponent> styleTransferPanel;
+    std::unique_ptr<EffectIconBarComponent> effectIconBar;
 
-        /** The top bar with file controls and settings */
-        TopBarComponent topBar;
+    // Vector of stem control panels for displaying the separated stems
+    std::vector<std::unique_ptr<StemControlPanel>> stemPanels;
+    
+    // Component to hold the stem panels
+    std::unique_ptr<juce::Component> stemContainer;
 
-        /** Vector of stem control panels for each stem */
-        std::vector<std::unique_ptr<StemControlPanel>> stemPanels;
-        
-        /** EQ panel component for frequency adjustment */
-        EQPanelComponent eqPanel;
-        
-        /** Compressor panel for dynamics processing */
-        CompressorPanelComponent compressorPanel;
-        
-        /** Style transfer panel for audio style transfer */
-        StyleTransferPanelComponent styleTransferPanel;
-        
-        /** Variation explorer for managing variations */
-        VariationExplorerComponent variationExplorer;
+    // Callback functions for effect toggles
+    void toggleEQPanel();
+    void toggleCompressorPanel();
+    void toggleReverbPanel();
+    void toggleDelayPanel();
+    void toggleChorusPanel();
+    void toggleSaturationPanel();
+    void toggleStyleTransferPanel();
 
-        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainEditor)
-    };
-}
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainEditor)
+};
+
+} // namespace undergroundBeats

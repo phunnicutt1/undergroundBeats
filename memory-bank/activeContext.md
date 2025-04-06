@@ -13,8 +13,8 @@ This file tracks the project's current status, including recent changes, current
 
 \[2025-04-04 08:36:13\] - Implemented per-stem Gain effect in `UndergroundBeatsProcessor`, adding dynamic gain parameters and applying them in `processBlock`.
 
+\[2025-04-04 20:14:36\] - Implemented basic Left Sidebar UI (`SidebarComponent`) with placeholder ListBox and integrated it into `MainComponent` layout.
 
-[2025-04-04 20:14:36] - Implemented basic Left Sidebar UI (`SidebarComponent`) with placeholder ListBox and integrated it into `MainComponent` layout.
+\[2025-04-04 20:30:06\] - Implemented basic Top Bar UI (`TopBarComponent`) with placeholder buttons and integrated it into `MainComponent` layout, adjusting `resized()`.
 
-[2025-04-04 20:30:06] - Implemented basic Top Bar UI (`TopBarComponent`) with placeholder buttons and integrated it into `MainComponent` layout, adjusting `resized()`.
 ## Open Questions/Issues

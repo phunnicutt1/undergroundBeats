@@ -1,93 +1,301 @@
+// Include own header FIRST
 #include "../../include/undergroundBeats/gui/MainEditor.h"
-#include "../../include/undergroundBeats/UndergroundBeatsProcessor.h"
-#include "../../include/undergroundBeats/gui/StemControlPanel.h"
-#include "JuceHeader.h"
 
-namespace undergroundBeats {
+// Then include dependencies
+#include "JuceHeader.h"
+// Include FULL definitions for unique_ptr members and other interactions
+#include "../../include/undergroundBeats/gui/TransportControls.h"
+#include "../../include/undergroundBeats/gui/SidebarComponent.h"
+#include "../../include/undergroundBeats/gui/TopBarComponent.h"
+#include "../../include/undergroundBeats/gui/panels/EQPanelComponent.h"
+#include "../../include/undergroundBeats/gui/panels/CompressorPanelComponent.h"
+#include "../../include/undergroundBeats/gui/panels/ReverbPanelComponent.h"
+#include "../../include/undergroundBeats/gui/panels/DelayPanelComponent.h"
+#include "../../include/undergroundBeats/gui/panels/ChorusPanelComponent.h"
+#include "../../include/undergroundBeats/gui/panels/SaturationPanelComponent.h"
+#include "../../include/undergroundBeats/gui/panels/StyleTransferPanelComponent.h"
+#include "../../include/undergroundBeats/gui/EffectIconBarComponent.h"
+#include "../../include/undergroundBeats/gui/SampleBrowserComponent.h"
+#include "../../include/undergroundBeats/gui/StemControlPanel.h"
+#include "../../include/undergroundBeats/UndergroundBeatsProcessor.h"
+
+namespace undergroundBeats
+{
 
 //==============================================================================
 MainEditor::MainEditor(UndergroundBeatsProcessor& processor)
-    : AudioProcessorEditor(&processor),
-      audioProcessor(processor),
-      transportControls(),
-      sidebar(),
-      topBar(),
-      eqPanel(),
-      compressorPanel(),
-      styleTransferPanel(),
-      variationExplorer()
+    : juce::AudioProcessorEditor(&processor),
+      processorRef(processor)
 {
-    // Set initial size
+    // These should now work as full definitions are included
+    sidebar = std::make_unique<SidebarComponent>();
+    topBar = std::make_unique<TopBarComponent>(processorRef, *sidebar);
+    transportControls = std::make_unique<TransportControls>();
+    eqPanel = std::make_unique<EQPanelComponent>();
+    compressorPanel = std::make_unique<CompressorPanelComponent>();
+    reverbPanel = std::make_unique<ReverbPanelComponent>();
+    delayPanel = std::make_unique<DelayPanelComponent>();
+    chorusPanel = std::make_unique<ChorusPanelComponent>();
+    saturationPanel = std::make_unique<SaturationPanelComponent>();
+    styleTransferPanel = std::make_unique<StyleTransferPanelComponent>();
+    effectIconBar = std::make_unique<EffectIconBarComponent>();
+    
+    // Create stem container
+    stemContainer = std::make_unique<juce::Component>();
+    addAndMakeVisible(stemContainer.get());
+
     setSize(800, 600);
-    
-    // Add components
-    addAndMakeVisible(transportControls);
-    addAndMakeVisible(sidebar);
-    addAndMakeVisible(topBar);
-    
-    // Create stem panels
-    const int initialNumStems = 4;
-    for (int i = 0; i < initialNumStems; ++i)
-    {
-        auto panel = std::make_unique<StemControlPanel>("Stem " + juce::String(i+1));
-        addAndMakeVisible(panel.get());
-        stemPanels.push_back(std::move(panel));
-    }
-    
+
+    // Add components - these should now work too
+    addAndMakeVisible(transportControls.get());
+    addAndMakeVisible(sidebar.get());
+    addAndMakeVisible(topBar.get());
+    addAndMakeVisible(effectIconBar.get());
+
     // Add effect panels
-    addAndMakeVisible(eqPanel);
-    addAndMakeVisible(compressorPanel);
-    addAndMakeVisible(styleTransferPanel);
+    addAndMakeVisible(eqPanel.get());
+    eqPanel->setVisible(false);
+    addAndMakeVisible(compressorPanel.get());
+    compressorPanel->setVisible(false);
+    addAndMakeVisible(reverbPanel.get());
+    reverbPanel->setVisible(false);
+    addAndMakeVisible(delayPanel.get());
+    delayPanel->setVisible(false);
+    addAndMakeVisible(chorusPanel.get());
+    chorusPanel->setVisible(false);
+    addAndMakeVisible(saturationPanel.get());
+    saturationPanel->setVisible(false);
+    addAndMakeVisible(styleTransferPanel.get());
+    styleTransferPanel->setVisible(false);
+
+    // Setup callbacks - requires full SidebarComponent & SampleBrowserComponent definitions
+    if (sidebar && sidebar->getSampleBrowser())
+    {
+        sidebar->getSampleBrowser()->onSampleDropped = [this](const juce::File& file) 
+        {
+            DBG("MainEditor: Sample dropped, triggering processor load for: " + file.getFileName());
+            processorRef.loadAudioFile(file);
+        };
+        sidebar->getSampleBrowser()->onFileChosenForProcessing = [this](const juce::File& file) 
+        {
+             DBG("MainEditor: File chosen in browser, triggering processor load for: " + file.getFileName());
+             processorRef.loadAudioFile(file);
+        };
+    }
+
+    // Connect effect buttons to toggle functions
+    effectIconBar->eqButton.onClick = [this] { toggleEQPanel(); };
+    effectIconBar->compButton.onClick = [this] { toggleCompressorPanel(); };
+    effectIconBar->reverbButton.onClick = [this] { toggleReverbPanel(); };
+    effectIconBar->delayButton.onClick = [this] { toggleDelayPanel(); };
+    effectIconBar->chorusButton.onClick = [this] { toggleChorusPanel(); };
+    effectIconBar->saturationButton.onClick = [this] { toggleSaturationPanel(); };
+    effectIconBar->styleButton.onClick = [this] { toggleStyleTransferPanel(); };
     
-    // Add variation explorer (initially hidden)
-    addChildComponent(variationExplorer);
+    // Start timer to check for processor updates
+    startTimerHz(10); // Check 10 times per second
 }
 
 MainEditor::~MainEditor()
 {
-    // Clean up resources
+    // Stop timer
+    stopTimer();
+    
+    // Clear stem panels before destroying the editor
+    stemPanels.clear();
+}
+
+void MainEditor::timerCallback()
+{
+    // Check if processor parameters have changed (which happens after stems are loaded)
+    if (processorRef.getParametersChangedFlag().exchange(false))
+    {
+        DBG("MainEditor: Processor parameters changed, updating stem displays");
+        updateStemDisplays();
+    }
+}
+
+void MainEditor::updateStemDisplays()
+{
+    // Get the separated stem buffers from the processor
+    const auto& stemBuffers = processorRef.getSeparatedStemBuffers();
+    
+    // If no stems, clear any existing displays
+    if (stemBuffers.empty())
+    {
+        stemPanels.clear();
+        resized(); // Trigger layout update
+        return;
+    }
+    
+    // Names and colors for the different stems
+    const juce::String stemNames[] = { "Drums", "Bass", "Vocals", "Other" };
+    const juce::Colour stemColors[] = { juce::Colours::red, juce::Colours::blue, 
+                                       juce::Colours::green, juce::Colours::yellow };
+    
+    // Resize the panel vector to match the number of stems
+    int numStems = static_cast<int>(stemBuffers.size());
+    
+    // Remove excess panels if needed
+    while (stemPanels.size() > numStems)
+    {
+        stemPanels.pop_back();
+    }
+    
+    // Add new panels if needed
+    while (stemPanels.size() < numStems)
+    {
+        int idx = static_cast<int>(stemPanels.size());
+        juce::String name = (idx < 4) ? stemNames[idx] : "Stem " + juce::String(idx + 1);
+        juce::Colour color = (idx < 4) ? stemColors[idx] : juce::Colours::white;
+        
+        auto panel = std::make_unique<StemControlPanel>(name, color);
+        stemContainer->addAndMakeVisible(panel.get());
+        stemPanels.push_back(std::move(panel));
+    }
+    
+    // Update each panel with its corresponding buffer
+    for (int i = 0; i < numStems; ++i)
+    {
+        stemPanels[i]->setAudioBuffer(&stemBuffers[i]);
+    }
+    
+    // Update layout
+    resized();
+    DBG("MainEditor: Updated " + juce::String(stemPanels.size()) + " stem panels");
 }
 
 void MainEditor::paint(juce::Graphics& g)
 {
-    // Fill the background
+    // (Our component is opaque, so we must fill the background with a solid colour)
     g.fillAll(getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
-    
-    // Add border
-    g.setColour(juce::Colours::grey);
-    g.drawRect(getLocalBounds(), 1);
+
+    g.setColour(juce::Colours::white);
+    g.setFont(15.0f);
+    // g.drawFittedText ("Hello World!", getLocalBounds(), juce::Justification::centred, 1);
 }
 
 void MainEditor::resized()
 {
-    auto area = getLocalBounds();
+    auto bounds = getLocalBounds();
+    int sidebarWidth = 200;
+    int topBarHeight = 50;
+    int transportHeight = 80;
+    int iconBarHeight = 40;
+
+    // Layout main areas - requires full definitions
+    topBar->setBounds(bounds.removeFromTop(topBarHeight));
+    sidebar->setBounds(bounds.removeFromLeft(sidebarWidth));
+    transportControls->setBounds(bounds.removeFromBottom(transportHeight));
+    effectIconBar->setBounds(bounds.removeFromTop(iconBarHeight));
+
+    // Main content area now contains stems and effect panels
+    stemContainer->setBounds(bounds);
     
-    // Top bar
-    topBar.setBounds(area.removeFromTop(40));
-    
-    // Sidebar on the left
-    sidebar.setBounds(area.removeFromLeft(200));
-    
-    // Transport controls at the bottom
-    transportControls.setBounds(area.removeFromBottom(50));
-    
-    // Stem panels in the main area
-    auto stemArea = area;
-    const int stemHeight = stemArea.getHeight() / juce::jmax(1, (int)stemPanels.size());
-    
-    for (auto& panel : stemPanels)
+    // Layout the stem panels vertically
+    int numStems = static_cast<int>(stemPanels.size());
+    if (numStems > 0)
     {
-        panel->setBounds(stemArea.removeFromTop(stemHeight));
+        int stemHeight = bounds.getHeight() / numStems;
+        for (int i = 0; i < numStems; ++i)
+        {
+            auto stemBounds = bounds.removeFromTop(stemHeight);
+            stemPanels[i]->setBounds(stemBounds);
+        }
     }
-    
-    // Effect panels - position them in the center when visible
-    auto effectArea = area.reduced(50);
-    eqPanel.setBounds(effectArea);
-    compressorPanel.setBounds(effectArea);
-    styleTransferPanel.setBounds(effectArea);
-    
-    // Variation explorer covers most of the window when visible
-    variationExplorer.setBounds(getLocalBounds().reduced(30));
+
+    // Effect panels occupy the same area as stem container
+    eqPanel->setBounds(stemContainer->getBounds());
+    compressorPanel->setBounds(stemContainer->getBounds());
+    reverbPanel->setBounds(stemContainer->getBounds());
+    delayPanel->setBounds(stemContainer->getBounds());
+    chorusPanel->setBounds(stemContainer->getBounds());
+    saturationPanel->setBounds(stemContainer->getBounds());
+    styleTransferPanel->setBounds(stemContainer->getBounds());
+}
+
+void MainEditor::toggleEQPanel()
+{
+    bool visible = !eqPanel->isVisible();
+    eqPanel->setVisible(visible);
+    compressorPanel->setVisible(false);
+    reverbPanel->setVisible(false);
+    delayPanel->setVisible(false);
+    chorusPanel->setVisible(false);
+    saturationPanel->setVisible(false);
+    styleTransferPanel->setVisible(false);
+}
+
+void MainEditor::toggleCompressorPanel()
+{
+    bool visible = !compressorPanel->isVisible();
+    compressorPanel->setVisible(visible);
+    eqPanel->setVisible(false);
+    reverbPanel->setVisible(false);
+    delayPanel->setVisible(false);
+    chorusPanel->setVisible(false);
+    saturationPanel->setVisible(false);
+    styleTransferPanel->setVisible(false);
+}
+
+void MainEditor::toggleReverbPanel()
+{
+    bool visible = !reverbPanel->isVisible();
+    reverbPanel->setVisible(visible);
+    eqPanel->setVisible(false);
+    compressorPanel->setVisible(false);
+    delayPanel->setVisible(false);
+    chorusPanel->setVisible(false);
+    saturationPanel->setVisible(false);
+    styleTransferPanel->setVisible(false);
+}
+
+void MainEditor::toggleDelayPanel()
+{
+    bool visible = !delayPanel->isVisible();
+    delayPanel->setVisible(visible);
+    eqPanel->setVisible(false);
+    compressorPanel->setVisible(false);
+    reverbPanel->setVisible(false);
+    chorusPanel->setVisible(false);
+    saturationPanel->setVisible(false);
+    styleTransferPanel->setVisible(false);
+}
+
+void MainEditor::toggleChorusPanel()
+{
+    bool visible = !chorusPanel->isVisible();
+    chorusPanel->setVisible(visible);
+    eqPanel->setVisible(false);
+    compressorPanel->setVisible(false);
+    reverbPanel->setVisible(false);
+    delayPanel->setVisible(false);
+    saturationPanel->setVisible(false);
+    styleTransferPanel->setVisible(false);
+}
+
+void MainEditor::toggleSaturationPanel()
+{
+    bool visible = !saturationPanel->isVisible();
+    saturationPanel->setVisible(visible);
+    eqPanel->setVisible(false);
+    compressorPanel->setVisible(false);
+    reverbPanel->setVisible(false);
+    delayPanel->setVisible(false);
+    chorusPanel->setVisible(false);
+    styleTransferPanel->setVisible(false);
+}
+
+void MainEditor::toggleStyleTransferPanel()
+{
+    bool visible = !styleTransferPanel->isVisible();
+    styleTransferPanel->setVisible(visible);
+    eqPanel->setVisible(false);
+    compressorPanel->setVisible(false);
+    reverbPanel->setVisible(false);
+    delayPanel->setVisible(false);
+    chorusPanel->setVisible(false);
+    saturationPanel->setVisible(false);
 }
 
 } // namespace undergroundBeats

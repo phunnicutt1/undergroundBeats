@@ -1,5 +1,7 @@
 #include "../../../include/undergroundBeats/gui/panels/StyleTransferPanelComponent.h"
 
+namespace undergroundBeats {
+
 StyleTransferPanelComponent::StyleTransferPanelComponent()
 {
     setSize(500, 300);
@@ -21,3 +23,5 @@ void StyleTransferPanelComponent::resized()
 {
     // Layout controls when implemented
 } 
+
+} // namespace undergroundBeats 

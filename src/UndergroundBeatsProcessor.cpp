@@ -1,5 +1,6 @@
 #include "../include/undergroundBeats/UndergroundBeatsProcessor.h"
 #include "../include/undergroundBeats/gui/MainEditor.h"
+#include "../include/undergroundBeats/ml/ONNXSourceSeparator.h"
 #include <juce_audio_basics/juce_audio_basics.h> // For NormalisableRange
 
 // Include iostream for temporary debugging output (optional)
@@ -187,6 +188,90 @@ juce::AudioProcessorValueTreeState::ParameterLayout UndergroundBeatsProcessor::c
             "Stem " + juce::String(i) + " Compressor Release",
             juce::NormalisableRange<float>(5.0f, 500.0f), 50.0f));
 
+        // ===== Reverb Parameters =====
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            getStemParameterID(i, "Reverb_Enable"),
+            "Stem " + juce::String(i) + " Reverb Enable",
+            false));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Reverb_RoomSize"),
+            "Stem " + juce::String(i) + " Reverb Room Size",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Reverb_Damping"),
+            "Stem " + juce::String(i) + " Reverb Damping",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Reverb_WetLevel"),
+            "Stem " + juce::String(i) + " Reverb Wet Level",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.33f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Reverb_DryLevel"),
+            "Stem " + juce::String(i) + " Reverb Dry Level",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.4f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Reverb_Width"),
+            "Stem " + juce::String(i) + " Reverb Width",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            getStemParameterID(i, "Reverb_Freeze"),
+            "Stem " + juce::String(i) + " Reverb Freeze",
+            false));
+
+        // ===== Delay Parameters =====
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            getStemParameterID(i, "Delay_Enable"),
+            "Stem " + juce::String(i) + " Delay Enable",
+            false));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Delay_Time"),
+            "Stem " + juce::String(i) + " Delay Time (ms)",
+            juce::NormalisableRange<float>(1.0f, 2000.0f), 500.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Delay_Feedback"),
+            "Stem " + juce::String(i) + " Delay Feedback",
+            juce::NormalisableRange<float>(0.0f, 0.95f), 0.5f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Delay_Mix"),
+            "Stem " + juce::String(i) + " Delay Mix",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+
+        // ===== Chorus Parameters =====
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            getStemParameterID(i, "Chorus_Enable"),
+            "Stem " + juce::String(i) + " Chorus Enable",
+            false));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Chorus_Rate"),
+            "Stem " + juce::String(i) + " Chorus Rate",
+            juce::NormalisableRange<float>(0.0f, 10.0f), 1.5f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Chorus_Depth"),
+            "Stem " + juce::String(i) + " Chorus Depth",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Chorus_CentreDelay"),
+            "Stem " + juce::String(i) + " Chorus Centre Delay",
+            juce::NormalisableRange<float>(1.0f, 100.0f), 7.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Chorus_Feedback"),
+            "Stem " + juce::String(i) + " Chorus Feedback",
+            juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Chorus_Mix"),
+            "Stem " + juce::String(i) + " Chorus Mix",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+
+        // ===== Saturation Parameters =====
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            getStemParameterID(i, "Saturation_Enable"),
+            "Stem " + juce::String(i) + " Saturation Enable",
+            false));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            getStemParameterID(i, "Saturation_Amount"),
+            "Stem " + juce::String(i) + " Saturation Amount",
+            juce::NormalisableRange<float>(0.0f, 10.0f), 1.0f));
+
         // ===== Style Transfer Placeholder =====
         params.push_back(std::make_unique<juce::AudioParameterBool>(
             getStemParameterID(i, "Style_Enable"),
@@ -254,34 +339,81 @@ bool UndergroundBeatsProcessor::loadAudioFile(const juce::File& audioFile)
     std::cout << "Audio file loaded: " << audioFile.getFullPathName() << std::endl;
     std::cout << "Channels: " << numChannels << ", Samples: " << numSamples << std::endl;
     std::cout << "Sample Rate: " << currentAudioReader->sampleRate << " Hz" << std::endl;
+    DBG("Processor: loadAudioFile - Starting separation process for: " + audioFile.getFullPathName());
     
-    // In a real application, we'd now call methods to separate the audio into stems.
-    // For now, we'll just signal success.
-
-    // --- Placeholder: Populate separatedStemBuffers for UI testing --- (NEW)
-    separatedStemBuffers.clear(); // Clear previous stems
-    int numPlaceholderStems = 4; // Example: Simulate 4 stems
-    for (int i = 0; i < numPlaceholderStems; ++i)
+    // --- Run ONNX Source Separation ---
+    bool separationSuccessful = false;
+    try
     {
-        // Create a copy of the original buffer for each "stem"
-        // Make sure audioBuffer is valid before copying
-        if (audioBuffer.getNumSamples() > 0 && audioBuffer.getNumChannels() > 0)
+        DBG("Processor: Creating ONNXSourceSeparator...");
+        // Use correct namespace and constructor
+        ml::ONNXSourceSeparator separator("models/source_separation.onnx", modelLoader);
+        
+        DBG("Processor: Calling separator.loadAndSeparate...");
+        // Load and separate
+        separationSuccessful = separator.loadAndSeparate(audioFile);
+        // Convert bool to string for DBG
+        DBG("Processor: separator.loadAndSeparate returned: " + juce::String(separationSuccessful ? "true" : "false"));
+
+        if (separationSuccessful)
         {
-            separatedStemBuffers.emplace_back(audioBuffer);
-            // Optionally modify each buffer slightly to make them look different
-            // e.g., apply gain, invert phase, etc. For now, just copies.
+            separatedStemBuffers.clear();
+            int numStems = separator.getNumberOfStems();
+            DBG("Processor: Separation successful. Number of stems: " + juce::String(numStems));
+            separatedStemBuffers.reserve(numStems); // Reserve space
+            for (int i = 0; i < numStems; ++i)
+            {
+                auto stemBuffer = separator.getStemBuffer(i);
+                DBG("  Stem " + juce::String(i) + " buffer size: " 
+                    + juce::String(stemBuffer.getNumChannels()) + " channels, " 
+                    + juce::String(stemBuffer.getNumSamples()) + " samples.");
+                separatedStemBuffers.push_back(std::move(stemBuffer)); // Use move if possible
+            }
+            DBG("Processor: Finished retrieving stem buffers.");
         }
         else
         {
-             // Handle case where audioBuffer is empty or invalid
-             separatedStemBuffers.emplace_back(); // Add an empty buffer
-             std::cerr << "Warning: audioBuffer is empty or invalid when creating placeholder stem " << i << std::endl;
+            DBG("Processor: ONNX separation reported failure (loadAndSeparate returned false).");
         }
     }
-    std::cout << "Placeholder: Created " << separatedStemBuffers.size() << " stem buffers." << std::endl;
-    // --- End Placeholder ---
+    catch (const std::exception& e)
+    {
+        DBG("Processor: ONNX separation failed with exception: " + juce::String(e.what()));
+        separationSuccessful = false;
+    }
 
+    // Fallback: create placeholder stems if separation failed
+    if (!separationSuccessful)
+    {
+        DBG("Processor: Falling back to placeholder stems.");
+        separatedStemBuffers.clear();
+        int numPlaceholderStems = 4;
+        separatedStemBuffers.reserve(numPlaceholderStems);
+        for (int i = 0; i < numPlaceholderStems; ++i)
+        {
+            if (audioBuffer.getNumSamples() > 0 && audioBuffer.getNumChannels() > 0)
+            {
+                DBG("  Creating placeholder stem " + juce::String(i) + " from original buffer.");
+                separatedStemBuffers.emplace_back(audioBuffer);
+            }
+            else
+            {
+                 DBG("  Creating empty placeholder stem " + juce::String(i) + " as original buffer is invalid.");
+                separatedStemBuffers.emplace_back(); // Add empty buffer if original is invalid
+            }
+        }
+        DBG("Processor: Created " + juce::String(separatedStemBuffers.size()) + " placeholder stems.");
+    }
+    
+    DBG("Processor: Final separatedStemBuffers size: " + juce::String(separatedStemBuffers.size()));
+
+    // Simply resize the vector. prepareToPlay will handle preparing the chains later.
+    stemEffectChains.resize(separatedStemBuffers.size());
+    
     parametersChanged = true; // Signal UI that parameters might need refreshing (NEW)
+    // Reset playback position for the new stems
+    playbackPosition = 0; 
+    
     return true;
 }
 
@@ -300,13 +432,27 @@ void UndergroundBeatsProcessor::prepareToPlay (double sampleRate, int samplesPer
 {
     std::cout << "Prepare to play called. Sample Rate: " << sampleRate << ", Block Size: " << samplesPerBlock << std::endl;
 
-    // Initialize DSP chains for each stem
-    const int numStems = static_cast<int>(separatedStemBuffers.size());
-    stemEffectChains.resize(numStems);
+    const int numStems = separatedStemBuffers.size();
+    const int numInputChannels = getTotalNumInputChannels();
+    const int numOutputChannels = getTotalNumOutputChannels();
 
-    for (auto& chain : stemEffectChains)
+    // Prepare DSP chains for each stem
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = samplesPerBlock;
+    spec.numChannels = numOutputChannels;
+
+    // Resize the vector of unique_ptrs first
+    stemEffectChains.resize(numStems);
+    for (int i = 0; i < numStems; ++i)
     {
-        chain.prepare({ sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
+        // If the pointer at this index is null, create a new chain
+        if (stemEffectChains[i] == nullptr)
+        {
+            stemEffectChains[i] = std::make_unique<StemEffectChain>();
+        }
+        // Prepare the chain (dereference the pointer)
+        stemEffectChains[i]->prepare(spec);
     }
 }
 
@@ -348,129 +494,227 @@ void UndergroundBeatsProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
 
     buffer.clear();
 
-    const int numStems = static_cast<int>(separatedStemBuffers.size());
+    const int numStems = separatedStemBuffers.size();
 
-    static juce::int64 playbackPosition = 0;
     int numSamples = buffer.getNumSamples();
     int outputChannels = buffer.getNumChannels();
 
     if (playing && !paused && numStems > 0)
     {
-        buffer.clear();
+        // DBG("Processor::processBlock - Processing block, numSamples: " + juce::String(numSamples) + ", numStems: " + juce::String(numStems)); // Optional general log
+
+        // We will accumulate into the main buffer, so clear it first if necessary
+        // If the host buffer isn't guaranteed clear, uncomment the line below
+        // buffer.clear(); 
 
         for (int stemIdx = 0; stemIdx < numStems; ++stemIdx)
         {
-            if (stemIdx >= separatedStemBuffers.size() || separatedStemBuffers[stemIdx].getNumSamples() == 0)
-                continue;
+             DBG("  Processing Stem Index: " + juce::String(stemIdx));
+
+            if (stemEffectChains[stemIdx] == nullptr) {
+                 DBG("    Stem chain is null, skipping.");
+                 continue;
+            }
+            if (stemIdx >= separatedStemBuffers.size() || separatedStemBuffers[stemIdx].getNumSamples() == 0) {
+                 DBG("    Stem buffer invalid or empty, skipping.");
+                 continue;
+             }
 
             const auto& stemBuffer = separatedStemBuffers[stemIdx];
             int stemChannels = stemBuffer.getNumChannels();
             juce::int64 stemLength = stemBuffer.getNumSamples();
 
+             DBG("    Stem Length: " + juce::String(stemLength) + ", Current Playback Pos: " + juce::String(playbackPosition));
+
             juce::int64 samplesAvailable = stemLength - playbackPosition;
-            if (samplesAvailable <= 0) continue;
+            if (samplesAvailable <= 0) {
+                 DBG("    No samples available at current position, skipping stem.");
+                 continue; // Or reset playbackPosition for this stem? Depends on desired loop behavior
+            }
 
             int samplesToProcess = (int) juce::jmin((juce::int64)numSamples, samplesAvailable);
+             DBG("    Samples to process for this block: " + juce::String(samplesToProcess));
 
-            juce::AudioBuffer<float> tempBuffer(stemChannels, samplesToProcess);
-            for (int ch = 0; ch < stemChannels; ++ch)
-                tempBuffer.copyFrom(ch, 0, stemBuffer, ch, (int)playbackPosition, samplesToProcess);
+            // Create a temporary buffer for processing this stem's block
+            // IMPORTANT: Ensure tempBuffer matches the number of channels expected by the *chain* (likely stereo)
+            int chainChannels = 2; // Assuming chains are prepared for stereo
+            juce::AudioBuffer<float> tempBuffer(chainChannels, samplesToProcess);
+
+            // Copy (and potentially up-mix mono to stereo) from stemBuffer to tempBuffer
+            for (int ch = 0; ch < chainChannels; ++ch) {
+                // If stem is mono, copy channel 0 to both L/R of temp buffer
+                // If stem is stereo, copy L->L, R->R
+                int sourceChannel = juce::jmin(ch, stemChannels - 1); 
+                tempBuffer.copyFrom(ch, 0, stemBuffer, sourceChannel, (int)playbackPosition, samplesToProcess);
+            }
+             DBG("    Copied stem data to temp buffer (handling mono->stereo).");
+
 
             // === Update DSP parameters ===
             auto& chain = stemEffectChains[stemIdx];
 
+            // Update EQ params...
             for (int band = 1; band <= 3; ++band)
             {
-                auto enable = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Enable"))->load() > 0.5f;
-                auto freq = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Freq"))->load();
-                auto gainDb = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Gain"))->load();
-                auto q = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Q"))->load();
+                auto eqEnableParamId = getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Enable");
+                auto eqFreqParamId = getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Freq");
+                auto eqGainParamId = getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Gain");
+                auto eqQParamId = getStemParameterID(stemIdx, "EQ" + juce::String(band) + "_Q");
 
-                // Create coefficients
-                auto coefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
-                    getSampleRate(), freq, q, juce::Decibels::decibelsToGain(gainDb));
+                auto* enableParam = valueTreeState.getRawParameterValue(eqEnableParamId);
+                auto* freqParam = valueTreeState.getRawParameterValue(eqFreqParamId);
+                auto* gainParam = valueTreeState.getRawParameterValue(eqGainParamId);
+                auto* qParam = valueTreeState.getRawParameterValue(eqQParamId);
+                
+                bool enable = enableParam ? enableParam->load() > 0.5f : true;
+                float freq = freqParam ? freqParam->load() : (band == 1 ? 100.0f : (band == 2 ? 1000.0f : 5000.0f));
+                float gainDb = gainParam ? gainParam->load() : 0.0f;
+                float q = qParam ? qParam->load() : 1.0f;
 
-                // Use switch statement to handle compile-time indices
+                auto coefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(), freq, q, juce::Decibels::decibelsToGain(gainDb));
+                
                 switch (band)
                 {
-                    case 1:
-                    {
-                        auto& filter = chain.get<0>();
-                        filter.coefficients = coefficients; // This way we can access the coefficients
-                        chain.setBypassed<0>(!enable);
-                        break;
-                    }
-                    case 2:
-                    {
-                        auto& filter = chain.get<1>();
-                        filter.coefficients = coefficients;
-                        chain.setBypassed<1>(!enable);
-                        break;
-                    }
-                    case 3:
-                    {
-                        auto& filter = chain.get<2>();
-                        filter.coefficients = coefficients;
-                        chain.setBypassed<2>(!enable);
-                        break;
-                    }
+                    case 1: chain->get<0>().coefficients = coefficients; chain->setBypassed<0>(!enable); break;
+                    case 2: chain->get<1>().coefficients = coefficients; chain->setBypassed<1>(!enable); break;
+                    case 3: chain->get<2>().coefficients = coefficients; chain->setBypassed<2>(!enable); break;
                 }
             }
+            
+            // Update Compressor params...
+            auto* compEnableParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Enable"));
+            auto* compThreshParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Threshold"));
+            auto* compRatioParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Ratio"));
+            auto* compAttackParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Attack"));
+            auto* compReleaseParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Release"));
+            bool compEnable = compEnableParam ? compEnableParam->load() > 0.5f : true;
+            auto& comp = chain->get<3>();
+            if(compThreshParam) comp.setThreshold(compThreshParam->load());
+            if(compRatioParam) comp.setRatio(compRatioParam->load());
+            if(compAttackParam) comp.setAttack(compAttackParam->load());
+            if(compReleaseParam) comp.setRelease(compReleaseParam->load());
+            chain->setBypassed<3>(!compEnable);
+            
+            // Update Reverb params...
+            auto* reverbEnableParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Reverb_Enable"));
+            auto* reverbRoomParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Reverb_RoomSize"));
+            auto* reverbDampParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Reverb_Damping"));
+            auto* reverbWetParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Reverb_WetLevel"));
+            auto* reverbDryParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Reverb_DryLevel"));
+            auto* reverbWidthParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Reverb_Width"));
+            auto* reverbFreezeParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Reverb_Freeze"));
+            bool reverbEnable = reverbEnableParam ? reverbEnableParam->load() > 0.5f : false;
+            auto& reverb = chain->get<4>();
+            juce::dsp::Reverb::Parameters reverbParams;
+            if(reverbRoomParam) reverbParams.roomSize = reverbRoomParam->load(); else reverbParams.roomSize = 0.5f;
+            if(reverbDampParam) reverbParams.damping = reverbDampParam->load(); else reverbParams.damping = 0.5f;
+            if(reverbWetParam) reverbParams.wetLevel = reverbWetParam->load(); else reverbParams.wetLevel = 0.33f;
+            if(reverbDryParam) reverbParams.dryLevel = reverbDryParam->load(); else reverbParams.dryLevel = 0.4f;
+            if(reverbWidthParam) reverbParams.width = reverbWidthParam->load(); else reverbParams.width = 1.0f;
+            if(reverbFreezeParam) reverbParams.freezeMode = reverbFreezeParam->load() > 0.5f ? 1.0f : 0.0f; else reverbParams.freezeMode = 0.0f;
+            reverb.setParameters(reverbParams);
+            chain->setBypassed<4>(!reverbEnable);
+            
+            // Update Delay params...
+            auto* delayEnableParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Enable"));
+            auto* delayTimeParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Time"));
+            auto* delayFeedbackParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Feedback"));
+            auto* delayMixParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Delay_Mix"));
+            bool delayEnable = delayEnableParam ? delayEnableParam->load() > 0.5f : false;
+            auto& delay = chain->get<5>();
+            double sampleRate = getSampleRate();
+            float delayTimeMs = delayTimeParam ? delayTimeParam->load() : 500.0f;
+            // delay.setDelay(delayTimeMs * sampleRate / 1000.0f); // Assuming DelayLine uses samples
+            // TODO: Check how juce::dsp::DelayLine sets delay (samples or seconds?)
+            // Assuming it needs samples for now, but the API might differ.
+            // Let's skip setting delay for now to avoid potential issues if API is different.
+            // if(delayFeedbackParam) delay.setFeedback(delayFeedbackParam->load());
+            // if(delayMixParam) delay.setMix(delayMixParam->load());
+            chain->setBypassed<5>(!delayEnable);
+            
+            // Update Chorus params...
+            auto* chorusEnableParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_Enable"));
+            auto* chorusRateParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_Rate"));
+            auto* chorusDepthParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_Depth"));
+            auto* chorusCentreDelayParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_CentreDelay"));
+            auto* chorusFeedbackParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_Feedback"));
+            auto* chorusMixParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Chorus_Mix"));
+            bool chorusEnable = chorusEnableParam ? chorusEnableParam->load() > 0.5f : false;
+            auto& chorus = chain->get<6>();
+            if(chorusRateParam) chorus.setRate(chorusRateParam->load());
+            if(chorusDepthParam) chorus.setDepth(chorusDepthParam->load());
+            if(chorusCentreDelayParam) chorus.setCentreDelay(chorusCentreDelayParam->load());
+            if(chorusFeedbackParam) chorus.setFeedback(chorusFeedbackParam->load());
+            if(chorusMixParam) chorus.setMix(chorusMixParam->load());
+            chain->setBypassed<6>(!chorusEnable);
+            
+            // Update Saturation params...
+            auto* satEnableParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Saturation_Enable"));
+            auto* satAmountParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Saturation_Amount"));
+            bool satEnable = satEnableParam ? satEnableParam->load() > 0.5f : false;
+            auto& saturator = chain->get<7>();
+            float satAmount = satAmountParam ? satAmountParam->load() : 1.0f; // Default amount
+            saturator.functionToUse = [satAmount](float x) { return std::tanh(satAmount * x); };
+            chain->setBypassed<7>(!satEnable);
 
-            auto compEnable = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Enable"))->load() > 0.5f;
-            auto threshold = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Threshold"))->load();
-            auto ratio = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Ratio"))->load();
-            auto attack = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Attack"))->load();
-            auto release = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Comp_Release"))->load();
-
-            auto& comp = chain.get<3>();
-            comp.setThreshold(threshold);
-            comp.setRatio(ratio);
-            comp.setAttack(attack);
-            comp.setRelease(release);
-            chain.setBypassed<3>(!compEnable);
-
-            auto styleEnable = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Style_Enable"))->load() > 0.5f;
-            auto& styleGain = chain.get<4>();
-            styleGain.setGainLinear(1.0f); // Placeholder gain
-            chain.setBypassed<4>(!styleEnable);
-
-            auto volume = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Volume"))->load();
-            auto gainDb = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Gain"))->load();
+            // Style Transfer Gain (Placeholder)
+            auto& styleGain = chain->get<8>();
+            styleGain.setGainLinear(1.0f); // Keep as placeholder
+            chain->setBypassed<8>(true); // Keep bypassed for now
+            
+            // Calculate Final Gain
+            auto* volumeParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Volume"));
+            auto* gainDbParam = valueTreeState.getRawParameterValue(getStemParameterID(stemIdx, "Gain"));
+            float volume = volumeParam ? volumeParam->load() : 0.8f;
+            float gainDb = gainDbParam ? gainDbParam->load() : 0.0f;
             float linearGain = volume * juce::Decibels::decibelsToGain(gainDb);
+             DBG("    Volume: " + juce::String(volume) + ", Gain(dB): " + juce::String(gainDb) + ", Linear Gain: " + juce::String(linearGain));
 
+            // Process the temporary buffer through the effect chain
             juce::dsp::AudioBlock<float> block(tempBuffer);
             juce::dsp::ProcessContextReplacing<float> context(block);
-            chain.process(context);
+             DBG("    Processing audio block through effect chain...");
+            chain->process(context);
+             DBG("    Processing complete.");
 
+            // Add the processed temporary buffer to the main output buffer
+             DBG("    Adding processed stem to main output buffer...");
             for (int ch = 0; ch < outputChannels; ++ch)
             {
-                int srcCh = juce::jmin(ch, stemChannels - 1);
-                buffer.addFrom(ch, 0, tempBuffer, srcCh, 0, samplesToProcess, linearGain);
+                // Ensure we read from the correct channel of the potentially stereo tempBuffer
+                buffer.addFrom(ch, 0, tempBuffer, ch, 0, samplesToProcess, linearGain);
             }
+             DBG("    Stem added to output.");
         }
 
-        // Update playback position
+        // Update global playback position - consider if this logic is correct
+        // Does it need to be stem-specific if stems have different lengths?
+        // For now, assume shortest stem dictates loop point.
         juce::int64 minLength = -1;
-        for (int stemIdx = 0; stemIdx < numStems; ++stemIdx)
-        {
-            if (stemIdx < separatedStemBuffers.size())
-            {
-                auto len = separatedStemBuffers[stemIdx].getNumSamples();
-                if (minLength == -1 || len < minLength)
-                    minLength = len;
-            }
+        for (int stemIdx = 0; stemIdx < numStems; ++stemIdx) {
+             if (stemIdx < separatedStemBuffers.size()) {
+                 auto len = separatedStemBuffers[stemIdx].getNumSamples();
+                 if (minLength == -1 || len < minLength)
+                     minLength = len;
+             }
         }
-        if (minLength > 0)
-        {
-            playbackPosition += numSamples;
-            if (playbackPosition >= minLength)
-                playbackPosition = 0;
+
+        if (minLength > 0) {
+             playbackPosition += numSamples;
+             if (playbackPosition >= minLength) {
+                 DBG("  Playback position wrapped around.");
+                 playbackPosition = 0; // Wrap around
+             }
+        } else {
+             playbackPosition = 0; // Reset if no valid stems
         }
-        else
-        {
-            playbackPosition = 0;
-        }
+         DBG("  Updated Playback Position: " + juce::String(playbackPosition));
+
+    }
+    else
+    {
+        // If not playing or no stems, ensure buffer is cleared
+        // buffer.clear(); // Usually good practice unless host guarantees it
     }
 }
 
@@ -519,45 +763,46 @@ void UndergroundBeatsProcessor::setStateInformation (const void* data, int sizeI
 void UndergroundBeatsProcessor::startPlayback()
 {
     // Start playback only if not already playing
+    DBG("Processor: startPlayback() called."); // Log entry
     if (!playing.load()) // Use .load() for atomic read
     {
         playing = true;
         paused = false;
-        // Reset position or start from current position depending on desired behavior
-        // currentSamplePosition = 0; // Example: Reset position on play
-        std::cout << "Processor: Playback Started" << std::endl;
-        // TODO: Add logic here to actually start reading/generating audio samples
+        playbackPosition = 0; // Reset position on play start
+        DBG("Processor: Playback Started (playing=true, paused=false, position=0)");
     }
     else if (paused.load()) // If paused, resume playback
     {
         paused = false;
-        std::cout << "Processor: Playback Resumed" << std::endl;
-        // TODO: Resume audio processing from current position
+        DBG("Processor: Playback Resumed (paused=false)");
+    }
+    else
+    {
+        DBG("Processor: startPlayback() called but already playing and not paused.");
     }
 }
 
 void UndergroundBeatsProcessor::pausePlayback()
 {
+    DBG("Processor: pausePlayback() called."); // Log entry
     // Pause only if currently playing and not already paused
     if (playing.load() && !paused.load())
     {
         paused = true;
-        std::cout << "Processor: Playback Paused" << std::endl;
-        // TODO: Add logic to halt audio processing but maintain position
+        DBG("Processor: Playback Paused (paused=true)");
     }
 }
 
 void UndergroundBeatsProcessor::stopPlayback()
 {
+    DBG("Processor: stopPlayback() called."); // Log entry
     // Stop playback if playing or paused
     if (playing.load() || paused.load())
     {
         playing = false;
         paused = false;
-        // Reset playback position
-        // currentSamplePosition = 0; // Example: Reset position on stop
-        std::cout << "Processor: Playback Stopped" << std::endl;
-        // TODO: Add logic to fully stop audio processing and reset state
+        playbackPosition = 0; // Reset position on stop
+        DBG("Processor: Playback Stopped (playing=false, paused=false, position=0)");
     }
 }
 

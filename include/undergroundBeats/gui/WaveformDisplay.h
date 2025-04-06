@@ -10,10 +10,7 @@ namespace undergroundBeats {
 class WaveformDisplay : public juce::Component
 {
 public:
-    WaveformDisplay()
-    {
-        // Default constructor
-    }
+    WaveformDisplay() = default;
 
     ~WaveformDisplay() override = default;
 
@@ -48,7 +45,7 @@ public:
         else
         {
             // Draw the actual waveform
-            g.setColour(juce::Colours::lightgreen);
+            g.setColour(waveformColour);
             drawWaveform(g);
         }
     }
@@ -64,6 +61,18 @@ public:
         repaint();
     }
 
+    void setWaveformColour(juce::Colour colour)
+    {
+        waveformColour = colour;
+        repaint();
+    }
+
+    void setZoomFactor(float zoom)
+    {
+        zoomFactor = zoom;
+        repaint();
+    }
+
 private:
     void drawWaveform(juce::Graphics& g)
     {
@@ -74,27 +83,35 @@ private:
         const float midY = bounds.getCentreY();
         const float waveformHeight = bounds.getHeight() * 0.8f;
         
-        // Draw waveform for first channel only for simplicity
         const float* samples = audioBuffer->getReadPointer(0);
-        const int numSamples = audioBuffer->getNumSamples();
-        
-        // Create path for waveform
+        const int totalSamples = audioBuffer->getNumSamples();
+
+        // Calculate number of samples to display based on zoom
+        int displaySamples = juce::jmax(1, (int)(totalSamples / zoomFactor));
+        int startSample = juce::jlimit(0, totalSamples - displaySamples, 0);
+
         juce::Path path;
         path.startNewSubPath(bounds.getX(), midY);
-        
-        const float xScale = bounds.getWidth() / numSamples;
-        
-        for (int i = 0; i < numSamples; ++i)
+
+        const float xScale = bounds.getWidth() / (float)displaySamples;
+
+        for (int i = 0; i < displaySamples; ++i)
         {
-            const float x = bounds.getX() + i * xScale;
-            const float y = midY - samples[i] * (waveformHeight / 2.0f);
+            int sampleIndex = startSample + i;
+            if (sampleIndex >= totalSamples)
+                break;
+
+            float x = bounds.getX() + i * xScale;
+            float y = midY - samples[sampleIndex] * (waveformHeight / 2.0f);
             path.lineTo(x, y);
         }
-        
+
         g.strokePath(path, juce::PathStrokeType(1.0f));
     }
 
     const juce::AudioBuffer<float>* audioBuffer = nullptr;
+    juce::Colour waveformColour = juce::Colours::lightgreen;
+    float zoomFactor = 1.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WaveformDisplay)
 };

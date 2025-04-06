@@ -1,5 +1,7 @@
 #include "../../../include/undergroundBeats/gui/panels/CompressorPanelComponent.h"
 
+namespace undergroundBeats {
+
 CompressorPanelComponent::CompressorPanelComponent()
 {
     setSize(500, 300);
@@ -21,3 +23,5 @@ void CompressorPanelComponent::resized()
 {
     // Layout controls when implemented
 } 
+
+} // namespace undergroundBeats 
