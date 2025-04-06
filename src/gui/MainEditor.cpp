@@ -52,6 +52,11 @@ MainEditor::MainEditor(UndergroundBeatsProcessor& processor)
     addAndMakeVisible(topBar.get());
     addAndMakeVisible(effectIconBar.get());
 
+    // Connect transport controls to processor using callbacks
+    transportControls->onPlay = [this] { processorRef.startPlayback(); };
+    transportControls->onPause = [this] { processorRef.pausePlayback(); };
+    transportControls->onStop = [this] { processorRef.stopPlayback(); };
+
     // Add effect panels
     addAndMakeVisible(eqPanel.get());
     eqPanel->setVisible(false);
@@ -192,15 +197,24 @@ void MainEditor::resized()
     // Main content area now contains stems and effect panels
     stemContainer->setBounds(bounds);
     
-    // Layout the stem panels vertically
+    // Layout the stem panels vertically with proper spacing
     int numStems = static_cast<int>(stemPanels.size());
     if (numStems > 0)
     {
-        int stemHeight = bounds.getHeight() / numStems;
+        // Calculate height with padding between stems
+        int totalPadding = (numStems - 1) * 10; // 10px padding between stems
+        int availableHeight = bounds.getHeight() - totalPadding;
+        int stemHeight = availableHeight / numStems;
+        
+        // Position each stem panel using full width
+        auto stemBounds = stemContainer->getLocalBounds();
         for (int i = 0; i < numStems; ++i)
         {
-            auto stemBounds = bounds.removeFromTop(stemHeight);
-            stemPanels[i]->setBounds(stemBounds);
+            auto panelBounds = stemBounds.removeFromTop(stemHeight);
+            if (i < numStems - 1) // Add padding except after the last stem
+                stemBounds.removeFromTop(10);
+                
+            stemPanels[i]->setBounds(panelBounds);
         }
     }
 
